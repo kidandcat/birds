@@ -296,11 +296,12 @@ fn setup(
         let tree_center_y = tree_top / 2.0;
         let tree_width = trunk_height * 0.4;  // Wider trees
 
-        // Trunk collision - use direct half-extents matching visual
+        // Trunk collision - half_extents should be half the visual size
         let trunk_width = tree_width * 0.3;
         let trunk_visual_scale = Vec3::new(trunk_width, trunk_height / 4.0, trunk_width);
-        // Collision box: half the visual width/depth, full height
-        let trunk_half_extents = Vec3::new(trunk_width, trunk_height / 2.0, trunk_width);
+        // Visual size: trunk_width x trunk_height x trunk_width (mesh is 1x4x1 * scale)
+        // Half extents = half of visual size
+        let trunk_half_extents = Vec3::new(trunk_width / 2.0, trunk_height / 2.0, trunk_width / 2.0);
         commands.spawn((
             PbrBundle {
                 mesh: trunk_mesh.clone(),
@@ -317,8 +318,9 @@ fn setup(
         for layer in 0..4 {
             let size = (tree_width * 2.0) - layer as f32 * 1.5;
             let leaf_scale = Vec3::splat(size / 3.0);
-            // Collision matches visual size (scale * mesh size / 2)
-            let leaf_half_extents = Vec3::splat(size);
+            // Visual size: size x size x size (mesh is 3x3x3 * scale of size/3)
+            // Half extents = half of visual size
+            let leaf_half_extents = Vec3::splat(size / 2.0);
             let leaf_y = trunk_height + 2.0 + layer as f32 * 3.0;
             commands.spawn((
                 PbrBundle {
