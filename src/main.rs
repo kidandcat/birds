@@ -29,6 +29,7 @@ fn main() {
             wing_flap,
             update_ui,
             check_goal,
+            bird_selection,
         ))
         .run();
 }
@@ -37,10 +38,132 @@ fn main() {
 #[derive(Component)]
 struct Player;
 
+// Bird types with different characteristics
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum BirdType {
+    Sparrow,   // Small, agile, fast flapping, poor glide
+    Hawk,      // Medium, balanced
+    Eagle,     // Large, slow turning, excellent glide, powerful
+    Albatross, // Very large, best glide, slowest but highest speed
+}
+
+impl BirdType {
+    fn name(&self) -> &'static str {
+        match self {
+            BirdType::Sparrow => "Sparrow",
+            BirdType::Hawk => "Hawk",
+            BirdType::Eagle => "Eagle",
+            BirdType::Albatross => "Albatross",
+        }
+    }
+
+    fn color(&self) -> Color {
+        match self {
+            BirdType::Sparrow => Color::srgb(0.6, 0.4, 0.2),   // Brown
+            BirdType::Hawk => Color::srgb(0.5, 0.3, 0.2),      // Dark brown
+            BirdType::Eagle => Color::srgb(0.2, 0.2, 0.3),     // Dark gray/blue
+            BirdType::Albatross => Color::srgb(0.9, 0.9, 0.95), // White
+        }
+    }
+
+    fn scale(&self) -> f32 {
+        match self {
+            BirdType::Sparrow => 0.6,
+            BirdType::Hawk => 1.0,
+            BirdType::Eagle => 1.4,
+            BirdType::Albatross => 1.8,
+        }
+    }
+}
+
+// Stats that vary by bird type
+#[derive(Component, Clone)]
+struct BirdStats {
+    bird_type: BirdType,
+    // Gliding
+    glide_efficiency: f32,      // Lower = less gravity when gliding (0.5-2.0)
+    min_glide_speed: f32,       // Minimum speed for good glide
+    perfect_glide_speed: f32,   // Speed for perfect glide
+    // Turning
+    turn_rate: f32,             // How fast bird can turn (mouse sensitivity)
+    roll_rate: f32,             // Auto-roll speed
+    // Flapping
+    flap_thrust: f32,           // Force per flap
+    flap_energy_cost: f32,      // Energy per flap
+    flap_cooldown: f32,         // Time between flaps
+    // Speed
+    max_dive_speed: f32,        // Terminal velocity when diving
+    acceleration: f32,          // Dive acceleration
+    // Walking
+    walk_speed: f32,
+}
+
+impl BirdStats {
+    fn for_type(bird_type: BirdType) -> Self {
+        match bird_type {
+            BirdType::Sparrow => BirdStats {
+                bird_type,
+                glide_efficiency: 1.8,      // Poor glide
+                min_glide_speed: 8.0,
+                perfect_glide_speed: 25.0,  // Higher cruise speed
+                turn_rate: 1.5,             // Very agile
+                roll_rate: 4.0,
+                flap_thrust: 9.0,           // 1.5x power
+                flap_energy_cost: 5.0,      // Same cost for all birds
+                flap_cooldown: 0.15,        // Fast flapping
+                max_dive_speed: 80.0,
+                acceleration: 20.0,
+                walk_speed: 6.0,            // Quick walker
+            },
+            BirdType::Hawk => BirdStats {
+                bird_type,
+                glide_efficiency: 1.0,      // Balanced
+                min_glide_speed: 10.0,
+                perfect_glide_speed: 20.0,
+                turn_rate: 1.0,
+                roll_rate: 3.0,
+                flap_thrust: 8.0,
+                flap_energy_cost: 5.0,      // Same cost for all birds
+                flap_cooldown: 0.25,
+                max_dive_speed: 95.0,
+                acceleration: 25.0,
+                walk_speed: 5.0,
+            },
+            BirdType::Eagle => BirdStats {
+                bird_type,
+                glide_efficiency: 0.6,      // Good glide
+                min_glide_speed: 12.0,
+                perfect_glide_speed: 25.0,
+                turn_rate: 0.7,             // Slower turning
+                roll_rate: 2.0,
+                flap_thrust: 12.0,          // Powerful flaps
+                flap_energy_cost: 5.0,      // Same cost for all birds
+                flap_cooldown: 0.4,         // Slow flapping
+                max_dive_speed: 110.0,
+                acceleration: 30.0,
+                walk_speed: 4.0,            // Slow walker
+            },
+            BirdType::Albatross => BirdStats {
+                bird_type,
+                glide_efficiency: 0.3,      // Excellent glide
+                min_glide_speed: 15.0,
+                perfect_glide_speed: 30.0,
+                turn_rate: 0.5,             // Very slow turning
+                roll_rate: 1.5,
+                flap_thrust: 15.0,          // Very powerful
+                flap_energy_cost: 5.0,      // Same cost for all birds
+                flap_cooldown: 0.6,         // Very slow flapping
+                max_dive_speed: 130.0,
+                acceleration: 35.0,
+                walk_speed: 3.0,            // Slowest walker
+            },
+        }
+    }
+}
+
 #[derive(Component)]
 struct Bird {
     speed: f32,
-    turn_speed: f32,
     pitch: f32,
     yaw: f32,
     roll: f32,
@@ -89,6 +212,9 @@ struct DraftIndicator;
 struct DistanceText;
 
 #[derive(Component)]
+struct BirdTypeText;
+
+#[derive(Component)]
 struct Wing {
     is_left: bool,
     base_x: f32,
@@ -97,7 +223,9 @@ struct Wing {
 #[derive(Resource, Default)]
 struct FlapState {
     timer: f32,
+    cooldown: f32,  // Time until next flap allowed
     space_held: bool,
+    wings_closed_time: f32,  // How long wings have been closed
 }
 
 fn setup(
@@ -168,37 +296,40 @@ fn setup(
         let tree_center_y = tree_top / 2.0;
         let tree_width = trunk_height * 0.4;  // Wider trees
 
-        // Trunk (visual only)
-        commands.spawn(PbrBundle {
-            mesh: trunk_mesh.clone(),
-            material: trunk_material.clone(),
-            transform: Transform::from_xyz(x, trunk_height / 2.0, z)
-                .with_scale(Vec3::new(tree_width * 0.3, trunk_height / 4.0, tree_width * 0.3)),
-            ..default()
-        });
-
-        // Tree collision box (invisible, centered properly)
+        // Trunk collision - use direct half-extents matching visual
+        let trunk_width = tree_width * 0.3;
+        let trunk_visual_scale = Vec3::new(trunk_width, trunk_height / 4.0, trunk_width);
+        // Collision box: half the visual width/depth, full height
+        let trunk_half_extents = Vec3::new(trunk_width, trunk_height / 2.0, trunk_width);
         commands.spawn((
-            SpatialBundle {
-                transform: Transform::from_xyz(x, tree_center_y, z),
+            PbrBundle {
+                mesh: trunk_mesh.clone(),
+                material: trunk_material.clone(),
+                transform: Transform::from_xyz(x, trunk_height / 2.0, z)
+                    .with_scale(trunk_visual_scale),
                 ..default()
             },
-            Obstacle {
-                half_extents: Vec3::new(tree_width, tree_top / 2.0, tree_width),
-            },
+            Obstacle { half_extents: trunk_half_extents },
         ));
 
-        // Leaves layers (visual only) - bigger leaves
+        // Leaves layers
         let leaf_mat = if rng.gen_bool(0.5) { leaves_material.clone() } else { dark_leaves.clone() };
         for layer in 0..4 {
             let size = (tree_width * 2.0) - layer as f32 * 1.5;
-            commands.spawn(PbrBundle {
-                mesh: leaves_mesh.clone(),
-                material: leaf_mat.clone(),
-                transform: Transform::from_xyz(x, trunk_height + 2.0 + layer as f32 * 3.0, z)
-                    .with_scale(Vec3::splat(size / 3.0)),
-                ..default()
-            });
+            let leaf_scale = Vec3::splat(size / 3.0);
+            // Collision matches visual size (scale * mesh size / 2)
+            let leaf_half_extents = Vec3::splat(size);
+            let leaf_y = trunk_height + 2.0 + layer as f32 * 3.0;
+            commands.spawn((
+                PbrBundle {
+                    mesh: leaves_mesh.clone(),
+                    material: leaf_mat.clone(),
+                    transform: Transform::from_xyz(x, leaf_y, z)
+                        .with_scale(leaf_scale),
+                    ..default()
+                },
+                Obstacle { half_extents: leaf_half_extents },
+            ));
         }
     }
 
@@ -217,7 +348,7 @@ fn setup(
         let x = -300.0 + i as f32 * 40.0 + rng.gen_range(-10.0..10.0);
         let height = rng.gen_range(60.0..120.0);
         let width = rng.gen_range(30.0..60.0);
-        // Mountain body with collision
+        // Mountain body
         commands.spawn((
             PbrBundle {
                 mesh: mountain_mesh.clone(),
@@ -319,6 +450,11 @@ fn setup(
         ..default()
     });
 
+    // Default bird type for player (can be changed via UI)
+    let player_bird_type = BirdType::Hawk;  // Medium balanced bird
+    let player_stats = BirdStats::for_type(player_bird_type);
+    let player_scale = player_bird_type.scale();
+
     // Spawn player voxel bird
     commands.spawn((
         PbrBundle {
@@ -326,22 +462,22 @@ fn setup(
             material: body_orange.clone(),
             transform: Transform::from_xyz(0.0, 20.0, 0.0)
                 .with_rotation(Quat::from_rotation_x(-PI / 2.0))
-                .with_scale(Vec3::new(0.8, 1.2, 0.8)),
+                .with_scale(Vec3::new(0.8 * player_scale, 1.2 * player_scale, 0.8 * player_scale)),
             ..default()
         },
         Player,
         Bird {
-            speed: 15.0,
-            turn_speed: 2.0,
+            speed: player_stats.perfect_glide_speed,
             pitch: 0.0,
             yaw: 0.0,
             roll: 0.0,
-            velocity: Vec3::new(0.0, 0.0, 15.0),  // Initial forward velocity
+            velocity: Vec3::new(0.0, 0.0, player_stats.perfect_glide_speed),
             grounded: false,
             damage_timer: 0.0,
             walk_timer: 0.0,
             is_walking: false,
         },
+        player_stats,
         Energy {
             current: 100.0,
             max: 100.0,
@@ -462,7 +598,6 @@ fn setup(
             },
             Bird {
                 speed: 12.0 + i as f32 * 0.5,
-                turn_speed: 1.5,
                 pitch: 0.0,
                 yaw: 0.0,
                 roll: 0.0,
@@ -669,6 +804,22 @@ fn setup(
             }),
             DistanceText,
         ));
+
+        // Bird type selector
+        parent.spawn((
+            TextBundle::from_section(
+                "Bird: Hawk [1-4 to change]",
+                TextStyle {
+                    font_size: 18.0,
+                    color: Color::srgb(0.9, 0.8, 0.5),
+                    ..default()
+                },
+            ).with_style(Style {
+                margin: UiRect::top(Val::Px(10.0)),
+                ..default()
+            }),
+            BirdTypeText,
+        ));
     });
 }
 
@@ -700,15 +851,16 @@ fn cursor_toggle(
 }
 
 fn player_input(
-    mut query: Query<&mut Bird, With<Player>>,
+    mut query: Query<(&mut Bird, &BirdStats), With<Player>>,
     mut motion_events: EventReader<bevy::input::mouse::MouseMotion>,
     time: Res<Time>,
 ) {
-    let Ok(mut bird) = query.get_single_mut() else { return };
+    let Ok((mut bird, stats)) = query.get_single_mut() else { return };
     let dt = time.delta_seconds();
 
-    // Mouse controls pitch and yaw (slower sensitivity)
-    let mouse_sensitivity = 0.0015;
+    // Mouse controls pitch and yaw - sensitivity affected by bird's turn_rate
+    let base_sensitivity = 0.0015;
+    let mouse_sensitivity = base_sensitivity * stats.turn_rate;
     let mut yaw_delta = 0.0;
 
     for event in motion_events.read() {
@@ -719,7 +871,7 @@ fn player_input(
 
     // Auto-roll when turning: bank into the turn
     let target_roll = yaw_delta * 30.0;  // Roll in direction of turn (reduced amount)
-    bird.roll = bird.roll + (target_roll - bird.roll) * 5.0 * dt;
+    bird.roll = bird.roll + (target_roll - bird.roll) * stats.roll_rate * dt;
 
     // Gradually return roll to level
     bird.roll *= 0.95;
@@ -736,16 +888,16 @@ fn player_input(
 }
 
 fn bird_movement(
-    mut query: Query<(&mut Bird, &mut Transform), Without<AiBird>>,
+    mut query: Query<(&mut Bird, &mut Transform, Option<&BirdStats>), Without<AiBird>>,
     camera_query: Query<&Transform, (With<Camera3d>, Without<Bird>)>,
+    obstacle_query: Query<(&Transform, &Obstacle), Without<Bird>>,
     flap_state: Res<FlapState>,
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
 ) {
     let dt = time.delta_seconds();
 
-    // Wings open = smooth gliding, wings closed = diving fast with more gravity
-    let drag_coefficient = if flap_state.space_held { 0.005 } else { 0.008 };
+    // Drag coefficient will be calculated per-bird based on size
 
     // Get camera forward and right vectors for movement reference
     let (cam_forward, cam_right) = camera_query
@@ -760,10 +912,50 @@ fn bird_movement(
         })
         .unwrap_or((Vec3::NEG_Z, Vec3::X));
 
-    for (mut bird, mut transform) in query.iter_mut() {
+    // Default stats for birds without BirdStats component
+    let default_stats = BirdStats::for_type(BirdType::Hawk);
+
+    for (mut bird, mut transform, stats_opt) in query.iter_mut() {
+        let stats = stats_opt.unwrap_or(&default_stats);
+
         // Handle grounded walking with WASD
         if bird.grounded {
-            let walk_speed = 5.0;
+            // Check if still over a surface (ground or obstacle)
+            let bird_pos = transform.translation;
+            let mut has_ground_support = bird_pos.y <= 1.0;  // Near ground level
+
+            if !has_ground_support {
+                // Check if over any obstacle
+                for (obs_transform, obstacle) in obstacle_query.iter() {
+                    let obs_pos = obs_transform.translation;
+                    let half = obstacle.half_extents;
+                    let obstacle_top = obs_pos.y + half.y;
+
+                    // Check if bird is within XZ bounds of obstacle and near its top
+                    // Use same tolerance as landing check (1.0) to prevent stuck loop
+                    let in_xz_bounds = bird_pos.x > obs_pos.x - half.x - 1.0
+                        && bird_pos.x < obs_pos.x + half.x + 1.0
+                        && bird_pos.z > obs_pos.z - half.z - 1.0
+                        && bird_pos.z < obs_pos.z + half.z + 1.0;
+
+                    // Match landing tolerance: y between obstacle_top - 2.0 and obstacle_top + 3.0
+                    let near_top = bird_pos.y < obstacle_top + 3.0 && bird_pos.y > obstacle_top - 2.0;
+
+                    if in_xz_bounds && near_top {
+                        has_ground_support = true;
+                        break;
+                    }
+                }
+            }
+
+            // If no ground support, start falling
+            if !has_ground_support {
+                bird.grounded = false;
+                bird.velocity = Vec3::new(0.0, -2.0, 0.0);  // Start falling
+                continue;  // Skip walking code, let physics take over
+            }
+
+            let walk_speed = stats.walk_speed;
             let mut world_move = Vec3::ZERO;
             let mut should_turn = false;
 
@@ -842,28 +1034,60 @@ fn bird_movement(
 
         // === SPEED-BASED GRAVITY & LIFT ===
         if flap_state.space_held {
-            // Wings closed: high gravity, fall fast
-            bird.velocity.y -= 20.0 * dt;
+            // Wings closed: gravity increases over time (stoop)
+            // Smaller birds reach max gravity faster
+            let (max_gravity, ramp_time) = match stats.bird_type {
+                BirdType::Sparrow => (1000.0, 3.0),
+                BirdType::Hawk => (1000.0, 4.5),
+                BirdType::Eagle => (1000.0, 5.5),
+                BirdType::Albatross => (1000.0, 7.0),
+            };
+            let gravity_factor = (flap_state.wings_closed_time / ramp_time).min(1.0);
+            bird.velocity.y -= max_gravity * gravity_factor * dt;
+
+            // Wings closed: convert falling energy to forward speed
+            // Smaller birds gain speed faster
+            let fall_speed = (-bird.velocity.y).max(0.0);  // How fast falling
+            if fall_speed > 1.0 {
+                // Get horizontal forward direction
+                let horizontal_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
+                let size_multiplier = match stats.bird_type {
+                    BirdType::Sparrow => 10.0,
+                    BirdType::Hawk => 6.0,
+                    BirdType::Eagle => 4.0,
+                    BirdType::Albatross => 3.0,
+                };
+                let acceleration = fall_speed * size_multiplier;
+                bird.velocity += horizontal_forward * acceleration * dt;
+
+                // Cap at max dive speed
+                if bird.velocity.length() > stats.max_dive_speed {
+                    bird.velocity = bird.velocity.normalize() * stats.max_dive_speed;
+                }
+            }
         } else {
             // Wings open: gravity depends on horizontal speed
-            // Fast = almost no fall, slow = fall faster
-            let min_speed_for_glide = 10.0;
-            let perfect_glide_speed = 20.0;
+            // Fast = less fall, slow = fall faster
+            // glide_efficiency: lower = better glide (less gravity)
+            let min_speed_for_glide = stats.min_glide_speed;
+            let perfect_glide_speed = stats.perfect_glide_speed;
+            let base_gravity = 15.0 * stats.glide_efficiency;
 
             if horizontal_speed >= perfect_glide_speed {
-                // At good speed: almost no fall, can glide forever
+                // At good speed: gentle fall
                 let wing_level = up.y.max(0.0);
-                bird.velocity.y -= 0.5 * (1.0 - wing_level * 0.9) * dt;  // Tiny fall
+                let min_fall = 5.0 * stats.glide_efficiency;
+                bird.velocity.y -= min_fall * (1.0 - wing_level * 0.5) * dt;
             } else if horizontal_speed >= min_speed_for_glide {
-                // Between min and perfect: proportional gentle fall
+                // Between min and perfect: proportional fall
                 let glide_quality = (horizontal_speed - min_speed_for_glide) / (perfect_glide_speed - min_speed_for_glide);
                 let wing_level = up.y.max(0.0);
-                let gravity = 3.0 * (1.0 - glide_quality * 0.9 * wing_level);
+                let gravity = base_gravity * (1.0 - glide_quality * 0.5 * wing_level);
                 bird.velocity.y -= gravity * dt;
             } else {
-                // Too slow - start falling more
+                // Too slow - fall much faster
                 let slow_factor = (min_speed_for_glide - horizontal_speed) / min_speed_for_glide;
-                let gravity = 3.0 + slow_factor * 15.0;  // Up to 18 when stopped
+                let gravity = base_gravity + slow_factor * 50.0;
                 bird.velocity.y -= gravity * dt;
             }
         }
@@ -877,8 +1101,12 @@ fn bird_movement(
 
             if pitch_factor > 0.05 {
                 // Diving - accelerate progressively (even slight dives gain speed)
-                let acceleration = pitch_factor * 25.0;  // Strong acceleration when diving
+                let acceleration = pitch_factor * stats.acceleration;
                 bird.velocity += forward * acceleration * dt;
+                // Cap at max dive speed
+                if bird.velocity.length() > stats.max_dive_speed {
+                    bird.velocity = bird.velocity.normalize() * stats.max_dive_speed;
+                }
             } else if pitch_factor < -0.3 {
                 // Only decelerate when climbing steeply (more than ~18 degrees up)
                 let climb_amount = (-pitch_factor - 0.3).max(0.0);
@@ -892,8 +1120,28 @@ fn bird_movement(
         }
 
         // === DRAG ===
-        let drag = bird.velocity * bird.velocity.length() * drag_coefficient;
-        bird.velocity -= drag * dt;
+        // Smaller birds lose speed faster, bigger birds preserve speed longer
+        // Drag only applies above cruise speed (perfect_glide_speed)
+        let cruise_speed = stats.perfect_glide_speed;
+        if speed > cruise_speed && !flap_state.space_held {
+            let base_drag = match stats.bird_type {
+                BirdType::Sparrow => 0.015,
+                BirdType::Hawk => 0.003,
+                BirdType::Eagle => 0.001,
+                BirdType::Albatross => 0.0003,
+            };
+            let drag = bird.velocity * bird.velocity.length() * base_drag;
+            bird.velocity -= drag * dt;
+
+            // Don't let drag reduce speed below cruise speed
+            if bird.velocity.length() < cruise_speed {
+                bird.velocity = bird.velocity.normalize() * cruise_speed;
+            }
+        } else if flap_state.space_held {
+            // When diving, still apply some drag
+            let drag = bird.velocity * bird.velocity.length() * 0.005;
+            bird.velocity -= drag * dt;
+        }
 
         // === YAW TURNING ===
         if speed > 1.0 {
@@ -955,24 +1203,39 @@ fn obstacle_collision(
     if bird.grounded { return; }
 
     let bird_pos = bird_transform.translation;
-    let bird_radius = 1.0;  // Slightly larger collision radius
+    let bird_radius = 0.8;
 
     for (obs_transform, obstacle) in obstacle_query.iter() {
         let obs_pos = obs_transform.translation;
         let half = obstacle.half_extents;
         let obstacle_top = obs_pos.y + half.y;
 
-        // First check: Landing on top (XZ overlap + falling onto top surface)
+        // Simple AABB + sphere collision check
+        let closest_x = bird_pos.x.clamp(obs_pos.x - half.x, obs_pos.x + half.x);
+        let closest_y = bird_pos.y.clamp(obs_pos.y - half.y, obs_pos.y + half.y);
+        let closest_z = bird_pos.z.clamp(obs_pos.z - half.z, obs_pos.z + half.z);
+
+        let distance = ((bird_pos.x - closest_x).powi(2)
+            + (bird_pos.y - closest_y).powi(2)
+            + (bird_pos.z - closest_z).powi(2))
+        .sqrt();
+
+        if distance > bird_radius {
+            continue; // No collision
+        }
+
+        // Check if this is a landing situation (on top of obstacle)
         let in_xz_bounds = bird_pos.x > obs_pos.x - half.x - 1.0
             && bird_pos.x < obs_pos.x + half.x + 1.0
             && bird_pos.z > obs_pos.z - half.z - 1.0
             && bird_pos.z < obs_pos.z + half.z + 1.0;
 
         let near_top = bird_pos.y > obstacle_top - 2.0 && bird_pos.y < obstacle_top + 3.0;
-        let moving_down = bird.velocity.y < 0.0;
+        let moving_down = bird.velocity.y < 0.0;  // Must be actually falling
+        let is_slow = bird.velocity.length() < 5.0;  // Very slow (nearly stopped)
 
-        if in_xz_bounds && near_top && moving_down {
-            // Land on top of obstacle - only adjust Y if sinking below surface
+        if in_xz_bounds && near_top && (moving_down || is_slow) {
+            // Land on top
             if bird_transform.translation.y < obstacle_top + 0.5 {
                 bird_transform.translation.y = obstacle_top + 0.5;
             }
@@ -980,38 +1243,26 @@ fn obstacle_collision(
             bird.grounded = true;
             bird.pitch = 0.0;
             bird.roll = 0.0;
-            return;  // Done, landed
+            return;  // Stop checking, we landed
         }
 
-        // Second check: Side collision (AABB)
-        let closest = Vec3::new(
-            bird_pos.x.clamp(obs_pos.x - half.x, obs_pos.x + half.x),
-            bird_pos.y.clamp(obs_pos.y - half.y, obs_pos.y + half.y),
-            bird_pos.z.clamp(obs_pos.z - half.z, obs_pos.z + half.z),
-        );
+        // Skip side collision if near top (allow landing approach)
+        if bird_pos.y > obstacle_top - 5.0 {
+            continue;
+        }
 
-        let distance = (bird_pos - closest).length();
+        // Side collision
+        let speed = bird.velocity.length();
+        let to_bird = (bird_pos - obs_pos).normalize_or_zero();
 
-        if distance < bird_radius {
-            // Side collision detected
-            let speed = bird.velocity.length();
-            let to_bird = (bird_pos - obs_pos).normalize_or_zero();
-
-            if speed > 5.0 && bird.damage_timer <= 0.0 {
-                // Fast horizontal collision - bounce back with damage
-                bird.damage_timer = 0.5;  // Damage animation duration
-
-                // Bounce away from obstacle
-                let bounce_dir = Vec3::new(to_bird.x, 0.3, to_bird.z).normalize_or_zero();
-                bird.velocity = bounce_dir * speed * 0.5;  // Lose half speed
-
-                // Push bird out of obstacle
-                bird_transform.translation = closest + to_bird * (bird_radius + 0.5);
-            } else {
-                // Slow collision - just push out
-                bird_transform.translation = closest + to_bird * (bird_radius + 0.5);
-                bird.velocity *= 0.5;
-            }
+        if speed > 5.0 && bird.damage_timer <= 0.0 {
+            bird.damage_timer = 0.5;
+            let bounce_dir = Vec3::new(to_bird.x, 0.3, to_bird.z).normalize_or_zero();
+            bird.velocity = bounce_dir * speed * 0.5;
+            bird_transform.translation += to_bird * (bird_radius + 0.5);
+        } else {
+            bird_transform.translation += to_bird * 0.5;
+            bird.velocity *= 0.5;
         }
     }
 }
@@ -1046,36 +1297,55 @@ fn ai_bird_movement(
 
 fn wing_flap(
     mut wing_query: Query<(&Wing, &mut Transform)>,
-    mut player_query: Query<(&mut Energy, &mut Bird), With<Player>>,
+    mut player_query: Query<(&mut Energy, &mut Bird, &BirdStats), With<Player>>,
     mut flap_state: ResMut<FlapState>,
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
 ) {
     let flap_duration = 0.3;
-    let energy_per_flap = 2.0;
-    let flap_thrust = 8.0;
     let wing_closed_angle = 1.2;  // Wings folded up when closed
+    let dt = time.delta_seconds();
 
-    // Check if grounded and walking
+    // Get bird state for animation
     let (is_grounded, is_walking, walk_timer) = player_query
         .get_single()
-        .map(|(_, b)| (b.grounded, b.is_walking, b.walk_timer))
+        .map(|(_, b, _)| (b.grounded, b.is_walking, b.walk_timer))
         .unwrap_or((false, false, 0.0));
 
-    // Track space held state
-    flap_state.space_held = keyboard.pressed(KeyCode::Space);
+    // Update cooldown timer
+    if flap_state.cooldown > 0.0 {
+        flap_state.cooldown -= dt;
+    }
 
-    // Start new flap on space press
-    if keyboard.just_pressed(KeyCode::Space) {
-        flap_state.timer = flap_duration;
+    // Track space held state - holding space always closes wings
+    // Cooldown only affects whether a flap happens, not wing position
+    if keyboard.pressed(KeyCode::Space) {
+        flap_state.space_held = true;
+        flap_state.wings_closed_time += dt;
+    } else {
+        flap_state.space_held = false;
+        flap_state.wings_closed_time = 0.0;  // Reset gravity ramp
+    }
+
+    // Cancel flap animation if pressing space during cooldown
+    if keyboard.just_pressed(KeyCode::Space) && flap_state.cooldown > 0.0 {
+        flap_state.timer = 0.0;
+    }
+
+    // Start new flap on space press (with cooldown check)
+    if keyboard.just_pressed(KeyCode::Space) && flap_state.cooldown <= 0.0 {
         // Deduct energy and add thrust relative to bird rotation
-        if let Ok((mut energy, mut bird)) = player_query.get_single_mut() {
-            energy.current = (energy.current - energy_per_flap).max(0.0);
+        if let Ok((mut energy, mut bird, bird_stats)) = player_query.get_single_mut() {
+            // Only start animation and cooldown if we actually flap
+            flap_state.timer = flap_duration;
+            flap_state.cooldown = bird_stats.flap_cooldown;  // Set cooldown based on bird type
+
+            energy.current = (energy.current - bird_stats.flap_energy_cost).max(0.0);
 
             // Take off if grounded
             if bird.grounded {
                 bird.grounded = false;
-                bird.velocity = Vec3::new(0.0, 10.0, 15.0);  // Jump up and forward
+                bird.velocity = Vec3::new(0.0, 10.0, bird_stats.perfect_glide_speed);
                 // Rotate velocity to face current yaw
                 let yaw_rotation = Quat::from_rotation_y(bird.yaw);
                 bird.velocity = yaw_rotation * bird.velocity;
@@ -1090,14 +1360,15 @@ fn wing_flap(
                 // Also add some forward thrust
                 let local_forward = bird_rotation * Vec3::Z;
 
-                bird.velocity += local_up * flap_thrust + local_forward * (flap_thrust * 0.3);
+                let thrust = bird_stats.flap_thrust;
+                bird.velocity += local_up * thrust + local_forward * (thrust * 0.3);
             }
         }
     }
 
     // Update flap timer
     if flap_state.timer > 0.0 {
-        flap_state.timer -= time.delta_seconds();
+        flap_state.timer -= dt;
     }
 
     for (wing, mut transform) in wing_query.iter_mut() {
@@ -1187,13 +1458,18 @@ fn camera_follow(
 }
 
 fn energy_system(
-    mut query: Query<(&mut Energy, &Drafting), With<Player>>,
+    mut query: Query<(&mut Energy, &Drafting, &BirdStats), With<Player>>,
     time: Res<Time>,
 ) {
-    let Ok((mut energy, drafting)) = query.get_single_mut() else { return };
+    let Ok((mut energy, drafting, stats)) = query.get_single_mut() else { return };
 
-    // Continuous energy regeneration
-    let base_regen = 1.5;  // Base regen rate
+    // Continuous energy regeneration - smaller birds recover faster
+    let base_regen = match stats.bird_type {
+        BirdType::Sparrow => 6.0,    // Fastest recovery
+        BirdType::Hawk => 4.0,
+        BirdType::Eagle => 2.5,
+        BirdType::Albatross => 1.5,  // Slowest recovery
+    };
     let draft_bonus = if drafting.is_drafting { 2.0 } else { 0.0 };  // Bonus when drafting
 
     let regen_rate = base_regen + draft_bonus;
@@ -1316,5 +1592,52 @@ fn check_goal(
     if energy.current <= 0.0 {
         println!("Out of energy! You fell from the sky...");
         game_state.game_over = true;
+    }
+}
+
+fn bird_selection(
+    mut player_query: Query<(&mut BirdStats, &mut Transform, &mut Bird), With<Player>>,
+    mut bird_text_query: Query<&mut Text, With<BirdTypeText>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+) {
+    // Check for number keys 1-4 to change bird type
+    let new_type = if keyboard.just_pressed(KeyCode::Digit1) {
+        Some(BirdType::Sparrow)
+    } else if keyboard.just_pressed(KeyCode::Digit2) {
+        Some(BirdType::Hawk)
+    } else if keyboard.just_pressed(KeyCode::Digit3) {
+        Some(BirdType::Eagle)
+    } else if keyboard.just_pressed(KeyCode::Digit4) {
+        Some(BirdType::Albatross)
+    } else {
+        None
+    };
+
+    if let Some(bird_type) = new_type {
+        if let Ok((mut stats, mut transform, mut bird)) = player_query.get_single_mut() {
+            // Update stats
+            *stats = BirdStats::for_type(bird_type);
+
+            // Update scale based on new bird type
+            let scale = bird_type.scale();
+            transform.scale = Vec3::new(0.8 * scale, 1.2 * scale, 0.8 * scale);
+
+            // Reset velocity to new bird's glide speed
+            let yaw_rotation = Quat::from_rotation_y(bird.yaw);
+            bird.velocity = yaw_rotation * Vec3::new(0.0, 0.0, stats.perfect_glide_speed);
+            bird.speed = stats.perfect_glide_speed;
+
+            println!("Changed to {} bird!", bird_type.name());
+        }
+    }
+
+    // Update UI text to show current bird type
+    if let Ok((stats, _, _)) = player_query.get_single() {
+        if let Ok(mut text) = bird_text_query.get_single_mut() {
+            text.sections[0].value = format!(
+                "Bird: {} [1-4 to change]",
+                stats.bird_type.name()
+            );
+        }
     }
 }
