@@ -1064,7 +1064,7 @@ fn bird_movement(
 
                 // Cap at max dive speed
                 if bird.velocity.length() > stats.max_dive_speed {
-                    bird.velocity = bird.velocity.normalize() * stats.max_dive_speed;
+                    bird.velocity = bird.velocity.normalize_or_zero() * stats.max_dive_speed;
                 }
             }
         } else {
@@ -1107,7 +1107,7 @@ fn bird_movement(
                 bird.velocity += forward * acceleration * dt;
                 // Cap at max dive speed
                 if bird.velocity.length() > stats.max_dive_speed {
-                    bird.velocity = bird.velocity.normalize() * stats.max_dive_speed;
+                    bird.velocity = bird.velocity.normalize_or_zero() * stats.max_dive_speed;
                 }
             } else if pitch_factor < -0.3 {
                 // Only decelerate when climbing steeply (more than ~18 degrees up)
@@ -1115,7 +1115,7 @@ fn bird_movement(
                 let deceleration = climb_amount * 6.0;  // Gentle deceleration
                 let speed_loss = (deceleration * dt).min(speed * 0.2);  // Max 20% per frame
                 if speed > 5.0 {
-                    let vel_dir = bird.velocity.normalize();
+                    let vel_dir = bird.velocity.normalize_or_zero();
                     bird.velocity -= vel_dir * speed_loss;
                 }
             }
@@ -1136,8 +1136,9 @@ fn bird_movement(
             bird.velocity -= drag * dt;
 
             // Don't let drag reduce speed below cruise speed
-            if bird.velocity.length() < cruise_speed {
-                bird.velocity = bird.velocity.normalize() * cruise_speed;
+            let current_speed = bird.velocity.length();
+            if current_speed < cruise_speed && current_speed > 0.1 {
+                bird.velocity = bird.velocity.normalize_or_zero() * cruise_speed;
             }
         } else if flap_state.space_held {
             // When diving, still apply some drag
@@ -1449,14 +1450,21 @@ fn camera_follow(
     let local_offset = Vec3::new(0.0, 3.0, -12.0);
     let world_offset = bird_rotation * local_offset;
 
-    // Smooth camera position (prevents jerky movement from flaps)
+    // Smooth camera position
     let target_pos = player_transform.translation + world_offset;
-    camera_transform.translation = camera_transform.translation.lerp(target_pos, 8.0 * dt);
+    let smooth_factor = (5.0 * dt).min(1.0);  // Clamped for stability
+    camera_transform.translation = camera_transform.translation.lerp(target_pos, smooth_factor);
 
-    // Camera looks at bird, with up vector rotated by bird's roll (not when grounded)
+    // Smooth camera rotation using slerp instead of look_at
     let up = Quat::from_rotation_z(-roll_factor) * Vec3::Y;
     let rotated_up = Quat::from_rotation_y(bird.yaw) * up;
-    camera_transform.look_at(player_transform.translation, rotated_up);
+    let look_dir = (player_transform.translation - camera_transform.translation).normalize_or_zero();
+    if look_dir.length_squared() > 0.01 {
+        let target_rotation = Transform::from_translation(camera_transform.translation)
+            .looking_at(player_transform.translation, rotated_up)
+            .rotation;
+        camera_transform.rotation = camera_transform.rotation.slerp(target_rotation, smooth_factor);
+    }
 }
 
 fn energy_system(
