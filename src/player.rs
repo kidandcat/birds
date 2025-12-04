@@ -378,6 +378,7 @@ pub fn player_input(
     mut query: Query<(&mut Bird, &BirdStats), With<Player>>,
     mut motion_events: EventReader<bevy::input::mouse::MouseMotion>,
     time: Res<Time>,
+    mut no_input_timer: Local<f32>,
 ) {
     let Ok((mut bird, stats)) = query.get_single_mut() else {
         return;
@@ -387,8 +388,10 @@ pub fn player_input(
     let base_sensitivity = 0.0015;
     let mouse_sensitivity = base_sensitivity * stats.turn_rate;
     let mut yaw_delta = 0.0;
+    let mut had_input = false;
 
     for event in motion_events.read() {
+        had_input = true;
         yaw_delta = -event.delta.x * mouse_sensitivity;
         bird.yaw += yaw_delta;
         bird.pitch = (bird.pitch + event.delta.y * mouse_sensitivity)
@@ -399,11 +402,20 @@ pub fn player_input(
     bird.roll = bird.roll + (target_roll - bird.roll) * stats.roll_rate * dt;
     bird.roll *= 0.97;
 
-    let optimal_pitch = 0.0;
-    let no_input = yaw_delta.abs() < 0.0001;
+    // Track time since last input for pitch auto-centering
+    if had_input {
+        *no_input_timer = 0.0;
+    } else {
+        *no_input_timer += dt;
+    }
 
-    if no_input {
-        bird.pitch = bird.pitch + (optimal_pitch - bird.pitch) * 2.0 * dt;
+    // Only auto-center pitch after 1.5 seconds of no input, and do it slowly
+    let auto_center_delay = 1.5;
+    let auto_center_speed = 0.5; // Much slower return to horizon
+
+    if *no_input_timer > auto_center_delay {
+        let optimal_pitch = 0.0;
+        bird.pitch = bird.pitch + (optimal_pitch - bird.pitch) * auto_center_speed * dt;
     }
 }
 
