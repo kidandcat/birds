@@ -30,7 +30,7 @@ impl BirdType {
 
     pub fn scale(&self) -> f32 {
         match self {
-            BirdType::Sparrow => 0.6,
+            BirdType::Sparrow => 0.4,
             BirdType::Hawk => 1.0,
             BirdType::Eagle => 1.4,
             BirdType::Albatross => 1.8,

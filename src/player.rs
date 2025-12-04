@@ -532,7 +532,7 @@ pub fn bird_movement(
         // Speed-based gravity & lift
         if flap_state.space_held {
             let (max_gravity, ramp_time) = match stats.bird_type {
-                BirdType::Sparrow => (1000.0, 3.0),
+                BirdType::Sparrow => (500.0, 3.0),  // Half gravity for small bird
                 BirdType::Hawk => (1000.0, 4.5),
                 BirdType::Eagle => (1000.0, 5.5),
                 BirdType::Albatross => (1000.0, 7.0),
@@ -792,7 +792,12 @@ pub fn wing_flap(
                 let local_forward = bird_rotation * Vec3::Z;
 
                 let thrust = bird_stats.flap_thrust;
-                bird.velocity += local_up * thrust + local_forward * (thrust * 0.3);
+                // Sparrow gets double forward speed per flap
+                let forward_mult = match bird_stats.bird_type {
+                    BirdType::Sparrow => 0.6,
+                    _ => 0.3,
+                };
+                bird.velocity += local_up * thrust + local_forward * (thrust * forward_mult);
             }
         }
     }
@@ -875,12 +880,12 @@ pub fn wing_flap(
 
 /// Camera follow system
 pub fn camera_follow(
-    player_query: Query<(&Bird, &Transform), With<Player>>,
+    player_query: Query<(&Bird, &Transform, &BirdStats), With<Player>>,
     mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<Player>)>,
     time: Res<Time>,
     mut frame_count: Local<u32>,
 ) {
-    let Ok((bird, player_transform)) = player_query.get_single() else {
+    let Ok((bird, player_transform, stats)) = player_query.get_single() else {
         return;
     };
     let Ok(mut camera_transform) = camera_query.get_single_mut() else {
@@ -899,8 +904,17 @@ pub fn camera_follow(
     let flight_forward = flight_rotation * Vec3::Z;
     let bird_up = flight_rotation * Vec3::Y;
 
-    let camera_distance_behind = 45.0;
-    let camera_height_above = 5.0;
+    // Adjust camera distance based on bird size
+    let camera_distance_behind = match stats.bird_type {
+        BirdType::Sparrow => 25.0,  // Closer for small bird
+        BirdType::Hawk => 45.0,
+        BirdType::Eagle => 50.0,
+        BirdType::Albatross => 55.0,
+    };
+    let camera_height_above = match stats.bird_type {
+        BirdType::Sparrow => 3.0,
+        _ => 5.0,
+    };
 
     let target_pos =
         player_transform.translation - flight_forward * camera_distance_behind + bird_up * camera_height_above;
