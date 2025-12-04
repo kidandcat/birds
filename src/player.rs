@@ -761,8 +761,9 @@ pub fn obstacle_collision(
         let bird_above_obstacle = bird_pos.y > obs_pos.y;
         let moving_down = bird.velocity.y < 0.0;
         let speed = bird.velocity.length();
-        let landing_speed_threshold = bird_stats.perfect_glide_speed * 1.2; // Cruise speed + 20% margin
-        let can_land = speed < landing_speed_threshold;
+        // Allow landing at cruise speed + 50% margin
+        let landing_speed_threshold = bird_stats.perfect_glide_speed * 1.5;
+        let can_land = speed <= landing_speed_threshold;
 
         if in_xz_bounds && bird_above_obstacle && moving_down {
             let landing_height = 0.5;
