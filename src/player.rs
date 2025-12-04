@@ -4,9 +4,10 @@ use std::f32::consts::PI;
 
 use crate::bird::{BirdStats, BirdType};
 use crate::components::{
-    AiBird, Bird, BodyPart, Drafting, FlapState, Obstacle, Player, Wing,
+    AiBird, Bird, BodyPart, Drafting, FlapState, Obstacle, Player, WindParticle, Wing,
 };
 use crate::state::{AppState, GameState, SelectedBirdType};
+use rand::Rng;
 
 /// Setup player bird entity
 pub fn setup_player(
@@ -529,31 +530,82 @@ pub fn bird_movement(
 
         let horizontal_speed = Vec3::new(bird.velocity.x, 0.0, bird.velocity.z).length();
 
-        // Speed-based gravity & lift
+        // Speed-based gravity & lift - different abilities per bird type
         if flap_state.space_held {
-            let (max_gravity, ramp_time) = match stats.bird_type {
-                BirdType::Sparrow => (500.0, 3.0),  // Half gravity for small bird
-                BirdType::Hawk => (1000.0, 4.5),
-                BirdType::Eagle => (1000.0, 5.5),
-                BirdType::Albatross => (1000.0, 7.0),
-            };
-            let gravity_factor = (flap_state.wings_closed_time / ramp_time).min(1.0);
-            bird.velocity.y -= max_gravity * gravity_factor * dt;
+            match stats.bird_type {
+                BirdType::Sparrow => {
+                    // QUICK DASH: Forward burst, maintains altitude
+                    let dash_acceleration = 60.0;
+                    let horizontal_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
+                    bird.velocity += horizontal_forward * dash_acceleration * dt;
 
-            let fall_speed = (-bird.velocity.y).max(0.0);
-            if fall_speed > 1.0 {
-                let horizontal_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
-                let size_multiplier = match stats.bird_type {
-                    BirdType::Sparrow => 10.0,
-                    BirdType::Hawk => 6.0,
-                    BirdType::Eagle => 4.0,
-                    BirdType::Albatross => 3.0,
-                };
-                let acceleration = fall_speed * size_multiplier;
-                bird.velocity += horizontal_forward * acceleration * dt;
+                    // Slight upward force to maintain altitude
+                    bird.velocity.y += 5.0 * dt;
 
-                if bird.velocity.length() > stats.max_dive_speed {
-                    bird.velocity = bird.velocity.normalize_or_zero() * stats.max_dive_speed;
+                    // Cap horizontal speed
+                    let max_dash_speed = 70.0;
+                    let h_speed = Vec3::new(bird.velocity.x, 0.0, bird.velocity.z).length();
+                    if h_speed > max_dash_speed {
+                        let h_dir = Vec3::new(bird.velocity.x, 0.0, bird.velocity.z).normalize_or_zero();
+                        bird.velocity.x = h_dir.x * max_dash_speed;
+                        bird.velocity.z = h_dir.z * max_dash_speed;
+                    }
+                }
+                BirdType::Hawk => {
+                    // POWER DIVE: Close wings, dive down, gain massive speed
+                    let max_gravity = 1000.0;
+                    let ramp_time = 4.5;
+                    let gravity_factor = (flap_state.wings_closed_time / ramp_time).min(1.0);
+                    bird.velocity.y -= max_gravity * gravity_factor * dt;
+
+                    let fall_speed = (-bird.velocity.y).max(0.0);
+                    if fall_speed > 1.0 {
+                        let horizontal_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
+                        let acceleration = fall_speed * 6.0;
+                        bird.velocity += horizontal_forward * acceleration * dt;
+
+                        if bird.velocity.length() > stats.max_dive_speed {
+                            bird.velocity = bird.velocity.normalize_or_zero() * stats.max_dive_speed;
+                        }
+                    }
+                }
+                BirdType::Eagle => {
+                    // THERMAL SOAR: Catch updraft, gain altitude without flapping
+                    let thermal_strength = 25.0;
+                    let ramp_time = 2.0;
+                    let thermal_factor = (flap_state.wings_closed_time / ramp_time).min(1.0);
+
+                    // Rise upward
+                    bird.velocity.y += thermal_strength * thermal_factor * dt;
+
+                    // Slight forward momentum loss while soaring
+                    let h_speed = Vec3::new(bird.velocity.x, 0.0, bird.velocity.z).length();
+                    if h_speed > stats.min_glide_speed {
+                        bird.velocity.x *= 1.0 - 0.3 * dt;
+                        bird.velocity.z *= 1.0 - 0.3 * dt;
+                    }
+
+                    // Cap upward speed
+                    bird.velocity.y = bird.velocity.y.min(20.0);
+                }
+                BirdType::Albatross => {
+                    // DYNAMIC SOARING: Use wind currents to elevate gradually
+                    let wind_lift = 18.0;
+                    let ramp_time = 3.0;
+                    let soar_factor = (flap_state.wings_closed_time / ramp_time).min(1.0);
+
+                    // Gradual lift from wind
+                    bird.velocity.y += wind_lift * soar_factor * dt;
+
+                    // Also gains some forward speed from wind
+                    let horizontal_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
+                    bird.velocity += horizontal_forward * 8.0 * soar_factor * dt;
+
+                    // Cap speeds
+                    bird.velocity.y = bird.velocity.y.min(15.0);
+                    if bird.velocity.length() > stats.max_dive_speed * 0.5 {
+                        bird.velocity = bird.velocity.normalize_or_zero() * stats.max_dive_speed * 0.5;
+                    }
                 }
             }
         } else {
@@ -742,18 +794,19 @@ pub fn wing_flap(
 
     let player_data = player_query
         .get_single()
-        .map(|(b, _, children)| {
+        .map(|(b, stats, children)| {
             (
                 b.grounded,
                 b.is_walking,
                 b.walk_timer,
+                stats.bird_type,
                 children.iter().copied().collect::<Vec<_>>(),
             )
         })
         .ok();
 
-    let (is_grounded, is_walking, walk_timer, player_children) = match player_data {
-        Some((g, w, t, c)) => (g, w, t, c),
+    let (is_grounded, is_walking, walk_timer, bird_type, player_children) = match player_data {
+        Some((g, w, t, bt, c)) => (g, w, t, bt, c),
         None => return,
     };
 
@@ -851,11 +904,54 @@ pub fn wing_flap(
                     transform.rotation = base_rotation * Quat::from_rotation_z(-angle);
                 }
             } else if flap_state.space_held && flap_state.wings_closed_time >= 0.5 {
-                // Only close wings after 500ms of holding space
-                if wing.is_left {
-                    transform.rotation = base_rotation * Quat::from_rotation_z(wing_closed_angle);
-                } else {
-                    transform.rotation = base_rotation * Quat::from_rotation_z(-wing_closed_angle);
+                // Different wing poses for each bird's ability
+                match bird_type {
+                    BirdType::Sparrow => {
+                        // QUICK DASH: Wings swept back, streamlined
+                        let sweep_back = 1.2;
+                        let tuck_angle = 0.8;
+                        if wing.is_left {
+                            transform.rotation = base_rotation
+                                * Quat::from_rotation_y(-sweep_back)
+                                * Quat::from_rotation_z(tuck_angle);
+                        } else {
+                            transform.rotation = base_rotation
+                                * Quat::from_rotation_y(sweep_back)
+                                * Quat::from_rotation_z(-tuck_angle);
+                        }
+                    }
+                    BirdType::Hawk => {
+                        // POWER DIVE: Wings fully closed against body
+                        if wing.is_left {
+                            transform.rotation = base_rotation * Quat::from_rotation_z(wing_closed_angle);
+                        } else {
+                            transform.rotation = base_rotation * Quat::from_rotation_z(-wing_closed_angle);
+                        }
+                    }
+                    BirdType::Eagle => {
+                        // THERMAL SOAR: Wings spread wide and slightly raised
+                        let spread_angle = -0.3; // Slight upward angle
+                        let forward_tilt = 0.2;
+                        if wing.is_left {
+                            transform.rotation = base_rotation
+                                * Quat::from_rotation_z(spread_angle)
+                                * Quat::from_rotation_y(-forward_tilt);
+                        } else {
+                            transform.rotation = base_rotation
+                                * Quat::from_rotation_z(-spread_angle)
+                                * Quat::from_rotation_y(forward_tilt);
+                        }
+                    }
+                    BirdType::Albatross => {
+                        // DYNAMIC SOARING: Wings fully extended, slight wave motion
+                        let wave = (flap_state.wings_closed_time * 3.0).sin() * 0.1;
+                        let spread_angle = -0.2 + wave;
+                        if wing.is_left {
+                            transform.rotation = base_rotation * Quat::from_rotation_z(spread_angle);
+                        } else {
+                            transform.rotation = base_rotation * Quat::from_rotation_z(-spread_angle);
+                        }
+                    }
                 }
             } else {
                 transform.rotation = base_rotation;
@@ -978,6 +1074,98 @@ pub fn drafting_system(
                 }
             }
         }
+    }
+}
+
+/// Spawn wind particles for Albatross ability
+pub fn wind_particle_spawner(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    player_query: Query<(&Transform, &BirdStats), With<Player>>,
+    flap_state: Res<FlapState>,
+    time: Res<Time>,
+    mut spawn_timer: Local<f32>,
+) {
+    let Ok((player_transform, stats)) = player_query.get_single() else {
+        return;
+    };
+
+    // Only spawn for Albatross during ability
+    if stats.bird_type != BirdType::Albatross || !flap_state.space_held || flap_state.wings_closed_time < 0.5 {
+        *spawn_timer = 0.0;
+        return;
+    }
+
+    *spawn_timer += time.delta_seconds();
+
+    // Spawn particles every 0.05 seconds
+    if *spawn_timer >= 0.05 {
+        *spawn_timer = 0.0;
+
+        let mut rng = rand::thread_rng();
+        let player_pos = player_transform.translation;
+
+        // Spawn 2-3 particles
+        for _ in 0..rng.gen_range(2..4) {
+            let offset = Vec3::new(
+                rng.gen_range(-15.0..15.0),
+                rng.gen_range(-5.0..10.0),
+                rng.gen_range(-10.0..20.0),
+            );
+
+            let particle_velocity = Vec3::new(
+                rng.gen_range(-5.0..5.0),
+                rng.gen_range(8.0..15.0),  // Upward to show lift
+                rng.gen_range(-30.0..-15.0),  // Moving past the bird
+            );
+
+            let size = rng.gen_range(0.3..0.8);
+
+            commands.spawn((
+                PbrBundle {
+                    mesh: meshes.add(Cuboid::new(size, size * 0.3, size * 2.0)),
+                    material: materials.add(StandardMaterial {
+                        base_color: Color::srgba(0.9, 0.95, 1.0, 0.4),
+                        alpha_mode: AlphaMode::Blend,
+                        unlit: true,
+                        ..default()
+                    }),
+                    transform: Transform::from_translation(player_pos + offset)
+                        .with_rotation(Quat::from_rotation_y(rng.gen_range(0.0..PI))),
+                    ..default()
+                },
+                WindParticle {
+                    lifetime: rng.gen_range(0.4..0.8),
+                    velocity: particle_velocity,
+                },
+            ));
+        }
+    }
+}
+
+/// Update and despawn wind particles
+pub fn wind_particle_update(
+    mut commands: Commands,
+    mut particle_query: Query<(Entity, &mut Transform, &mut WindParticle)>,
+    time: Res<Time>,
+) {
+    let dt = time.delta_seconds();
+
+    for (entity, mut transform, mut particle) in particle_query.iter_mut() {
+        particle.lifetime -= dt;
+
+        if particle.lifetime <= 0.0 {
+            commands.entity(entity).despawn();
+            continue;
+        }
+
+        // Move particle
+        transform.translation += particle.velocity * dt;
+
+        // Fade effect by scaling down
+        let scale_factor = particle.lifetime * 2.0;
+        transform.scale = Vec3::splat(scale_factor.min(1.0));
     }
 }
 

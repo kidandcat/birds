@@ -74,6 +74,8 @@ fn main() {
             player::drafting_system,
             ai::ai_bird_behavior,
             player::wing_flap,
+            player::wind_particle_spawner,
+            player::wind_particle_update,
             ui::update_ui,
             ui::check_goal,
             world::chunk_management,

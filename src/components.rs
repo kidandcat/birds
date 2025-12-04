@@ -112,3 +112,10 @@ pub struct FlapState {
     pub space_held: bool,
     pub wings_closed_time: f32,
 }
+
+/// Wind particle for Albatross dynamic soaring effect
+#[derive(Component)]
+pub struct WindParticle {
+    pub lifetime: f32,
+    pub velocity: Vec3,
+}
