@@ -6,7 +6,7 @@ use crate::bird::{BirdStats, BirdType};
 use crate::components::{
     AiBird, Bird, BodyPart, Drafting, FlapState, Obstacle, Player, Wing,
 };
-use crate::state::SelectedBirdType;
+use crate::state::{AppState, GameState, SelectedBirdType};
 
 /// Setup player bird entity
 pub fn setup_player(
@@ -965,4 +965,43 @@ pub fn drafting_system(
             }
         }
     }
+}
+
+/// Handle reset to bird selection when R is pressed
+pub fn reset_to_selection(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut windows: Query<&mut Window>,
+) {
+    if keyboard.just_pressed(KeyCode::KeyR) {
+        // Release cursor before going back to selection
+        if let Ok(mut window) = windows.get_single_mut() {
+            window.cursor.grab_mode = CursorGrabMode::None;
+            window.cursor.visible = true;
+        }
+        next_state.set(AppState::BirdSelection);
+    }
+}
+
+/// Cleanup player when exiting Playing state
+pub fn cleanup_player(
+    mut commands: Commands,
+    player_query: Query<Entity, With<Player>>,
+    mut game_state: ResMut<GameState>,
+    mut flap_state: ResMut<FlapState>,
+) {
+    // Despawn player entity
+    for entity in player_query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+
+    // Reset game state
+    game_state.game_over = false;
+    game_state.won = false;
+
+    // Reset flap state
+    flap_state.timer = 0.0;
+    flap_state.cooldown = 0.0;
+    flap_state.space_held = false;
+    flap_state.wings_closed_time = 0.0;
 }

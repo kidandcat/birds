@@ -77,8 +77,10 @@ fn main() {
             ui::update_ui,
             ui::check_goal,
             world::chunk_management,
+            player::reset_to_selection,
         )
             .run_if(in_state(AppState::Playing)),
     )
+    .add_systems(OnExit(AppState::Playing), player::cleanup_player)
     .run();
 }
