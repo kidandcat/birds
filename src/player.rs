@@ -534,17 +534,13 @@ pub fn bird_movement(
         if flap_state.space_held {
             match stats.bird_type {
                 BirdType::Sparrow => {
-                    // QUICK DASH: Forward burst with fast flip, maintains altitude
+                    // QUICK DASH: Forward burst, maintains altitude
                     let dash_acceleration = 60.0;
                     let horizontal_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
                     bird.velocity += horizontal_forward * dash_acceleration * dt;
 
                     // Slight upward force to maintain altitude
                     bird.velocity.y += 5.0 * dt;
-
-                    // Fast barrel roll - complete a full rotation quickly
-                    let flip_speed = 12.0; // Radians per second (about 2 full rotations per second)
-                    bird.roll += flip_speed * dt;
 
                     // Cap horizontal speed
                     let max_dash_speed = 70.0;
@@ -911,17 +907,13 @@ pub fn wing_flap(
                 // Different wing poses for each bird's ability
                 match bird_type {
                     BirdType::Sparrow => {
-                        // QUICK DASH: Wings swept back, streamlined
-                        let sweep_back = 1.2;
-                        let tuck_angle = 0.8;
+                        // QUICK DASH: Rapid wing flapping
+                        let flip_speed = 25.0; // Very fast flapping
+                        let flip_angle = (flap_state.wings_closed_time * flip_speed).sin() * 1.2;
                         if wing.is_left {
-                            transform.rotation = base_rotation
-                                * Quat::from_rotation_y(-sweep_back)
-                                * Quat::from_rotation_z(tuck_angle);
+                            transform.rotation = base_rotation * Quat::from_rotation_z(flip_angle);
                         } else {
-                            transform.rotation = base_rotation
-                                * Quat::from_rotation_y(sweep_back)
-                                * Quat::from_rotation_z(-tuck_angle);
+                            transform.rotation = base_rotation * Quat::from_rotation_z(-flip_angle);
                         }
                     }
                     BirdType::Hawk => {
