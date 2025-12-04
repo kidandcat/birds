@@ -760,15 +760,33 @@ pub fn obstacle_collision(
 
         let bird_above_obstacle = bird_pos.y > obs_pos.y;
         let moving_down = bird.velocity.y < 0.0;
-        let is_slow = bird.velocity.length() < 5.0;
+        let speed = bird.velocity.length();
+        let landing_speed_threshold = bird_stats.perfect_glide_speed * 1.2; // Cruise speed + 20% margin
+        let can_land = speed < landing_speed_threshold;
 
-        if in_xz_bounds && bird_above_obstacle && (moving_down || is_slow) {
+        if in_xz_bounds && bird_above_obstacle && moving_down {
             let landing_height = 0.5;
             bird_transform.translation.y = obstacle_top + landing_height;
-            bird.velocity = Vec3::ZERO;
-            bird.grounded = true;
-            bird.pitch = 0.0;
-            bird.roll = 0.0;
+
+            if can_land {
+                // Slow enough to land
+                bird.velocity = Vec3::ZERO;
+                bird.grounded = true;
+                bird.pitch = 0.0;
+                bird.roll = 0.0;
+            } else {
+                // Too fast - slide along the surface
+                // Keep horizontal velocity, cancel vertical
+                bird.velocity.y = 0.0;
+
+                // Apply friction to slow down while sliding
+                let friction = 0.98;
+                bird.velocity.x *= friction;
+                bird.velocity.z *= friction;
+
+                // Slight bounce to keep bird just above surface
+                bird.velocity.y = 2.0;
+            }
             return;
         }
 
