@@ -912,8 +912,8 @@ pub fn camera_follow(
         BirdType::Albatross => 55.0,
     };
     let camera_height_above = match stats.bird_type {
-        BirdType::Sparrow => 3.0,
-        _ => 5.0,
+        BirdType::Sparrow => 0.0,
+        _ => 1.0,
     };
 
     let target_pos =
