@@ -71,7 +71,6 @@ fn main() {
             player::obstacle_collision,
             ai::ai_bird_movement,
             player::camera_follow,
-            player::energy_system,
             player::drafting_system,
             ai::ai_bird_behavior,
             player::wing_flap,

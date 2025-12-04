@@ -27,19 +27,10 @@ pub struct Obstacle {
     pub half_extents: Vec3,
 }
 
-/// Player energy for flapping
-#[derive(Component)]
-pub struct Energy {
-    pub current: f32,
-    pub max: f32,
-    pub _drain_rate: f32,
-}
-
 /// Drafting behind other birds
 #[derive(Component)]
 pub struct Drafting {
     pub is_drafting: bool,
-    pub draft_bonus: f32,
 }
 
 /// AI-controlled bird behavior
@@ -55,9 +46,6 @@ pub struct AiBird {
 pub struct Goal;
 
 /// UI Components
-#[derive(Component)]
-pub struct EnergyBar;
-
 #[derive(Component)]
 pub struct DraftIndicator;
 

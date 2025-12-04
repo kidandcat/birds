@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::f32::consts::PI;
 
 use crate::components::{
-    AiBird, Bird, Chunk, ChunkManager, DistanceText, DraftIndicator, EnergyBar, Goal, Obstacle,
+    AiBird, Bird, Chunk, ChunkManager, DistanceText, DraftIndicator, Goal, Obstacle,
     Player, VoxelChunk, Wing,
 };
 
@@ -513,31 +513,6 @@ pub fn setup_environment(
             ..default()
         })
         .with_children(|parent| {
-            parent
-                .spawn(NodeBundle {
-                    style: Style {
-                        width: Val::Px(300.0),
-                        height: Val::Px(30.0),
-                        ..default()
-                    },
-                    background_color: Color::srgba(0.2, 0.2, 0.2, 0.8).into(),
-                    ..default()
-                })
-                .with_children(|parent| {
-                    parent.spawn((
-                        NodeBundle {
-                            style: Style {
-                                width: Val::Percent(100.0),
-                                height: Val::Percent(100.0),
-                                ..default()
-                            },
-                            background_color: Color::srgb(0.2, 0.8, 0.2).into(),
-                            ..default()
-                        },
-                        EnergyBar,
-                    ));
-                });
-
             parent.spawn((
                 TextBundle::from_section(
                     "",

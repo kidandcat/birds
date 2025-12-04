@@ -4,7 +4,7 @@ use std::f32::consts::PI;
 
 use crate::bird::{BirdStats, BirdType};
 use crate::components::{
-    AiBird, Bird, BodyPart, Drafting, Energy, FlapState, Obstacle, Player, Wing,
+    AiBird, Bird, BodyPart, Drafting, FlapState, Obstacle, Player, Wing,
 };
 use crate::state::SelectedBirdType;
 
@@ -80,15 +80,7 @@ pub fn setup_player(
                 is_walking: false,
             },
             player_stats,
-            Energy {
-                current: 100.0,
-                max: 100.0,
-                _drain_rate: 2.0,
-            },
-            Drafting {
-                is_drafting: false,
-                draft_bonus: 0.7,
-            },
+            Drafting { is_drafting: false },
             BodyPart::Body,
         ))
         .with_children(|parent| {
@@ -246,9 +238,9 @@ pub fn player_input(
             .clamp(-PI / 2.0 + 0.1, PI / 2.0 - 0.1);
     }
 
-    let target_roll = -yaw_delta * 30.0;
+    let target_roll = -yaw_delta * 60.0;
     bird.roll = bird.roll + (target_roll - bird.roll) * stats.roll_rate * dt;
-    bird.roll *= 0.95;
+    bird.roll *= 0.97;
 
     let optimal_pitch = 0.0;
     let no_input = yaw_delta.abs() < 0.0001;
@@ -583,7 +575,7 @@ pub fn obstacle_collision(
 pub fn wing_flap(
     mut wing_query: Query<(&Wing, &mut Transform)>,
     mut head_query: Query<(&BodyPart, &mut Transform), Without<Wing>>,
-    mut player_query: Query<(&mut Energy, &mut Bird, &BirdStats, &Children), With<Player>>,
+    mut player_query: Query<(&mut Bird, &BirdStats, &Children), With<Player>>,
     mut flap_state: ResMut<FlapState>,
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
@@ -594,7 +586,7 @@ pub fn wing_flap(
 
     let player_data = player_query
         .get_single()
-        .map(|(_, b, _, children)| {
+        .map(|(b, _, children)| {
             (
                 b.grounded,
                 b.is_walking,
@@ -626,11 +618,9 @@ pub fn wing_flap(
     }
 
     if keyboard.just_pressed(KeyCode::Space) && flap_state.cooldown <= 0.0 {
-        if let Ok((mut energy, mut bird, bird_stats, _)) = player_query.get_single_mut() {
+        if let Ok((mut bird, bird_stats, _)) = player_query.get_single_mut() {
             flap_state.timer = flap_duration;
             flap_state.cooldown = bird_stats.flap_cooldown;
-
-            energy.current = (energy.current - bird_stats.flap_energy_cost).max(0.0);
 
             if bird.grounded {
                 bird.grounded = false;
@@ -780,31 +770,6 @@ pub fn camera_follow(
             camera_relative
         );
     }
-}
-
-/// Energy regeneration system
-pub fn energy_system(
-    mut query: Query<(&mut Energy, &Drafting, &BirdStats), With<Player>>,
-    time: Res<Time>,
-) {
-    let Ok((mut energy, drafting, stats)) = query.get_single_mut() else {
-        return;
-    };
-
-    let base_regen = match stats.bird_type {
-        BirdType::Sparrow => 6.0,
-        BirdType::Hawk => 4.0,
-        BirdType::Eagle => 2.5,
-        BirdType::Albatross => 1.5,
-    };
-    let draft_bonus = if drafting.is_drafting {
-        drafting.draft_bonus
-    } else {
-        0.0
-    };
-
-    let regen_rate = base_regen + draft_bonus;
-    energy.current = (energy.current + regen_rate * time.delta_seconds()).min(energy.max);
 }
 
 /// Drafting detection system

@@ -2,8 +2,7 @@ use bevy::prelude::*;
 
 use crate::bird::{BirdStats, BirdType};
 use crate::components::{
-    BirdButton, DistanceText, DraftIndicator, Drafting, Energy, EnergyBar, Goal, Player,
-    SelectionUI,
+    BirdButton, DistanceText, DraftIndicator, Drafting, Goal, Player, SelectionUI,
 };
 use crate::state::{AppState, GameState, SelectedBirdType};
 
@@ -173,17 +172,13 @@ pub fn cleanup_selection_ui(mut commands: Commands, query: Query<Entity, With<Se
 
 /// Update UI elements
 pub fn update_ui(
-    energy_query: Query<(&Energy, &Drafting), With<Player>>,
-    mut energy_bar_query: Query<&mut Style, With<EnergyBar>>,
+    drafting_query: Query<&Drafting, With<Player>>,
     mut draft_text_query: Query<&mut Text, With<DraftIndicator>>,
     mut distance_text_query: Query<&mut Text, (With<DistanceText>, Without<DraftIndicator>)>,
     player_query: Query<&Transform, With<Player>>,
     goal_query: Query<&Transform, With<Goal>>,
 ) {
-    let Ok((energy, drafting)) = energy_query.get_single() else {
-        return;
-    };
-    let Ok(mut bar_style) = energy_bar_query.get_single_mut() else {
+    let Ok(drafting) = drafting_query.get_single() else {
         return;
     };
     let Ok(mut draft_text) = draft_text_query.get_single_mut() else {
@@ -193,11 +188,8 @@ pub fn update_ui(
         return;
     };
 
-    let percent = (energy.current / energy.max * 100.0).clamp(0.0, 100.0);
-    bar_style.width = Val::Percent(percent);
-
     if drafting.is_drafting {
-        draft_text.sections[0].value = "DRAFTING! Energy saved!".to_string();
+        draft_text.sections[0].value = "DRAFTING!".to_string();
     } else {
         draft_text.sections[0].value = "".to_string();
     }
@@ -212,7 +204,7 @@ pub fn update_ui(
 
 /// Check if goal reached
 pub fn check_goal(
-    player_query: Query<(&Transform, &Energy), With<Player>>,
+    player_query: Query<&Transform, With<Player>>,
     goal_query: Query<&Transform, With<Goal>>,
     mut game_state: ResMut<GameState>,
 ) {
@@ -220,7 +212,7 @@ pub fn check_goal(
         return;
     }
 
-    let Ok((player_transform, energy)) = player_query.get_single() else {
+    let Ok(player_transform) = player_query.get_single() else {
         return;
     };
     let Ok(goal_transform) = goal_query.get_single() else {
@@ -230,13 +222,8 @@ pub fn check_goal(
     let distance = (goal_transform.translation - player_transform.translation).length();
 
     if distance < 5.0 {
-        println!("You made it home! Energy remaining: {:.1}%", energy.current);
+        println!("You made it home!");
         game_state.game_over = true;
         game_state.won = true;
-    }
-
-    if energy.current <= 0.0 {
-        println!("Out of energy! You fell from the sky...");
-        game_state.game_over = true;
     }
 }
