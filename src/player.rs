@@ -679,7 +679,8 @@ pub fn wing_flap(
                 } else {
                     transform.rotation = base_rotation * Quat::from_rotation_z(-angle);
                 }
-            } else if flap_state.space_held {
+            } else if flap_state.space_held && flap_state.wings_closed_time >= 0.5 {
+                // Only close wings after 500ms of holding space
                 if wing.is_left {
                     transform.rotation = base_rotation * Quat::from_rotation_z(wing_closed_angle);
                 } else {
