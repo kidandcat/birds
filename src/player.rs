@@ -807,23 +807,33 @@ pub fn wing_flap(
             let base_rotation = Quat::IDENTITY;
 
             if is_grounded {
-                let fold_angle = 1.2;
+                // When grounded, body is rotated -PI/2 around X (head up)
+                // Wings need to fold along the body using Y rotation (tuck against sides)
+                // and X rotation to angle them down against the body
+                let fold_y = 1.4; // Tuck wings back along body
+                let fold_x = 0.3; // Angle wings slightly down
                 if is_walking {
-                    let swing = (walk_timer).sin() * 0.4;
+                    let swing = (walk_timer).sin() * 0.3;
                     if wing.is_left {
                         transform.rotation = base_rotation
-                            * Quat::from_rotation_z(fold_angle)
-                            * Quat::from_rotation_y(swing);
+                            * Quat::from_rotation_y(-fold_y)
+                            * Quat::from_rotation_x(fold_x)
+                            * Quat::from_rotation_z(swing);
                     } else {
                         transform.rotation = base_rotation
-                            * Quat::from_rotation_z(-fold_angle)
-                            * Quat::from_rotation_y(-swing);
+                            * Quat::from_rotation_y(fold_y)
+                            * Quat::from_rotation_x(fold_x)
+                            * Quat::from_rotation_z(-swing);
                     }
                 } else {
                     if wing.is_left {
-                        transform.rotation = base_rotation * Quat::from_rotation_z(fold_angle);
+                        transform.rotation = base_rotation
+                            * Quat::from_rotation_y(-fold_y)
+                            * Quat::from_rotation_x(fold_x);
                     } else {
-                        transform.rotation = base_rotation * Quat::from_rotation_z(-fold_angle);
+                        transform.rotation = base_rotation
+                            * Quat::from_rotation_y(fold_y)
+                            * Quat::from_rotation_x(fold_x);
                     }
                 }
             } else if flap_state.timer > 0.0 {
