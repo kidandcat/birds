@@ -22,36 +22,60 @@ pub fn setup_player(
     let base_color = player_bird_type.color();
     let rgba = base_color.to_srgba();
     let head_color = Color::srgb(
-        (rgba.red * 1.2).min(1.0),
-        (rgba.green * 1.2).min(1.0),
-        (rgba.blue * 1.2).min(1.0),
+        (rgba.red * 1.15).min(1.0),
+        (rgba.green * 1.15).min(1.0),
+        (rgba.blue * 1.15).min(1.0),
     );
-    let wing_color = Color::srgb(rgba.red * 0.8, rgba.green * 0.8, rgba.blue * 0.8);
+    let wing_color = Color::srgb(rgba.red * 0.75, rgba.green * 0.75, rgba.blue * 0.75);
+    let wing_tip_color = Color::srgb(rgba.red * 0.5, rgba.green * 0.5, rgba.blue * 0.5);
+    let belly_color = Color::srgb(
+        (rgba.red * 1.3).min(1.0),
+        (rgba.green * 1.3).min(1.0),
+        (rgba.blue * 1.3).min(1.0),
+    );
 
     let voxel = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
 
     let body_material = materials.add(StandardMaterial {
         base_color,
+        perceptual_roughness: 0.8,
         ..default()
     });
     let head_material = materials.add(StandardMaterial {
         base_color: head_color,
+        perceptual_roughness: 0.7,
         ..default()
     });
     let wing_material = materials.add(StandardMaterial {
         base_color: wing_color,
+        perceptual_roughness: 0.9,
+        ..default()
+    });
+    let wing_tip_material = materials.add(StandardMaterial {
+        base_color: wing_tip_color,
+        perceptual_roughness: 0.9,
+        ..default()
+    });
+    let belly_material = materials.add(StandardMaterial {
+        base_color: belly_color,
+        perceptual_roughness: 0.6,
         ..default()
     });
     let beak_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.95, 0.7, 0.2),
+        perceptual_roughness: 0.5,
         ..default()
     });
+    let feet_material = beak_material.clone();
     let eye_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.1, 0.1, 0.1),
+        base_color: Color::srgb(0.05, 0.05, 0.05),
+        perceptual_roughness: 0.1,
+        metallic: 0.5,
         ..default()
     });
     let eye_white = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 1.0, 1.0),
+        base_color: Color::srgb(0.98, 0.98, 0.98),
+        perceptual_roughness: 0.3,
         ..default()
     });
 
@@ -59,11 +83,11 @@ pub fn setup_player(
         .spawn((
             PbrBundle {
                 mesh: voxel.clone(),
-                material: body_material,
+                material: body_material.clone(),
                 transform: Transform::from_xyz(0.0, 125.0, 0.0).with_scale(Vec3::new(
-                    0.8 * player_scale * 3.0,
-                    0.8 * player_scale * 3.0,
-                    1.2 * player_scale * 3.0,
+                    0.75 * player_scale * 3.0,
+                    0.7 * player_scale * 3.0,
+                    1.1 * player_scale * 3.0,
                 )),
                 ..default()
             },
@@ -84,100 +108,232 @@ pub fn setup_player(
             BodyPart::Body,
         ))
         .with_children(|parent| {
+            // Belly (lighter underside)
+            parent.spawn(PbrBundle {
+                mesh: voxel.clone(),
+                material: belly_material,
+                transform: Transform::from_xyz(0.0, -0.35, 0.0)
+                    .with_scale(Vec3::new(0.85, 0.4, 0.9)),
+                ..default()
+            });
+
+            // Chest (front body bulge)
+            parent.spawn(PbrBundle {
+                mesh: voxel.clone(),
+                material: body_material,
+                transform: Transform::from_xyz(0.0, 0.1, 0.4)
+                    .with_scale(Vec3::new(0.7, 0.6, 0.4)),
+                ..default()
+            });
+
             // Head
             parent
                 .spawn((
                     PbrBundle {
                         mesh: voxel.clone(),
                         material: head_material,
-                        transform: Transform::from_xyz(0.0, 0.0, 0.7)
-                            .with_scale(Vec3::new(0.75, 0.75, 0.75)),
+                        transform: Transform::from_xyz(0.0, 0.15, 0.65)
+                            .with_scale(Vec3::new(0.65, 0.6, 0.6)),
                         ..default()
                     },
                     BodyPart::Head,
                 ))
                 .with_children(|head| {
-                    // Beak
+                    // Crown/top of head
+                    head.spawn(PbrBundle {
+                        mesh: voxel.clone(),
+                        material: wing_material.clone(),
+                        transform: Transform::from_xyz(0.0, 0.45, -0.1)
+                            .with_scale(Vec3::new(0.5, 0.25, 0.5)),
+                        ..default()
+                    });
+                    // Beak - upper
+                    head.spawn(PbrBundle {
+                        mesh: voxel.clone(),
+                        material: beak_material.clone(),
+                        transform: Transform::from_xyz(0.0, 0.05, 0.55)
+                            .with_scale(Vec3::new(0.3, 0.15, 0.5)),
+                        ..default()
+                    });
+                    // Beak - lower
                     head.spawn(PbrBundle {
                         mesh: voxel.clone(),
                         material: beak_material,
-                        transform: Transform::from_xyz(0.0, 0.0, 0.55)
-                            .with_scale(Vec3::new(0.4, 0.27, 0.55)),
+                        transform: Transform::from_xyz(0.0, -0.1, 0.5)
+                            .with_scale(Vec3::new(0.22, 0.1, 0.35)),
                         ..default()
                     });
-                    // Eyes
+                    // Left eye socket
                     head.spawn(PbrBundle {
                         mesh: voxel.clone(),
                         material: eye_white.clone(),
-                        transform: Transform::from_xyz(-0.4, 0.2, 0.2)
-                            .with_scale(Vec3::splat(0.27)),
+                        transform: Transform::from_xyz(-0.38, 0.15, 0.25)
+                            .with_scale(Vec3::new(0.18, 0.28, 0.22)),
                         ..default()
                     });
+                    // Left pupil
                     head.spawn(PbrBundle {
                         mesh: voxel.clone(),
                         material: eye_material.clone(),
-                        transform: Transform::from_xyz(-0.47, 0.2, 0.27)
-                            .with_scale(Vec3::splat(0.13)),
+                        transform: Transform::from_xyz(-0.45, 0.15, 0.32)
+                            .with_scale(Vec3::splat(0.12)),
                         ..default()
                     });
+                    // Right eye socket
                     head.spawn(PbrBundle {
                         mesh: voxel.clone(),
                         material: eye_white,
-                        transform: Transform::from_xyz(0.4, 0.2, 0.2).with_scale(Vec3::splat(0.27)),
+                        transform: Transform::from_xyz(0.38, 0.15, 0.25)
+                            .with_scale(Vec3::new(0.18, 0.28, 0.22)),
                         ..default()
                     });
+                    // Right pupil
                     head.spawn(PbrBundle {
                         mesh: voxel.clone(),
                         material: eye_material,
-                        transform: Transform::from_xyz(0.47, 0.2, 0.27)
-                            .with_scale(Vec3::splat(0.13)),
+                        transform: Transform::from_xyz(0.45, 0.15, 0.32)
+                            .with_scale(Vec3::splat(0.12)),
                         ..default()
                     });
                 });
-            // Tail feathers
-            for i in 0..3 {
-                let spread = (i as f32 - 1.0) * 0.25;
+
+            // Tail base
+            parent.spawn((
+                PbrBundle {
+                    mesh: voxel.clone(),
+                    material: wing_material.clone(),
+                    transform: Transform::from_xyz(0.0, 0.0, -0.7)
+                        .with_scale(Vec3::new(0.35, 0.15, 0.35)),
+                    ..default()
+                },
+                BodyPart::Tail,
+            ));
+
+            // Tail feathers - fan pattern
+            for i in 0..7 {
+                let spread = (i as f32 - 3.0) * 0.12;
+                let length = 0.55 - (i as f32 - 3.0).abs() * 0.05;
+                let z_offset = -0.85 - (3.0 - (i as f32 - 3.0).abs()) * 0.08;
                 parent.spawn((
                     PbrBundle {
                         mesh: voxel.clone(),
-                        material: wing_material.clone(),
-                        transform: Transform::from_xyz(spread, 0.0, -0.9 - i as f32 * 0.1)
-                            .with_scale(Vec3::new(0.15, 0.05, 0.5)),
+                        material: wing_tip_material.clone(),
+                        transform: Transform::from_xyz(spread, 0.0, z_offset)
+                            .with_scale(Vec3::new(0.08, 0.03, length)),
                         ..default()
                     },
                     BodyPart::Tail,
                 ));
             }
-            // Left wing
-            parent.spawn((
-                PbrBundle {
+
+            // Left wing - multi-segment with feathers
+            parent
+                .spawn((
+                    PbrBundle {
+                        mesh: voxel.clone(),
+                        material: wing_material.clone(),
+                        transform: Transform::from_xyz(-0.55, 0.0, 0.05)
+                            .with_scale(Vec3::new(0.6, 0.08, 0.45)),
+                        ..default()
+                    },
+                    Wing {
+                        is_left: true,
+                        _base_x: -0.55,
+                    },
+                    BodyPart::Wing,
+                ))
+                .with_children(|wing| {
+                    // Wing mid section
+                    wing.spawn(PbrBundle {
+                        mesh: voxel.clone(),
+                        material: wing_material.clone(),
+                        transform: Transform::from_xyz(-0.85, 0.0, -0.05)
+                            .with_scale(Vec3::new(0.9, 0.9, 0.85)),
+                        ..default()
+                    });
+                    // Wing tip
+                    wing.spawn(PbrBundle {
+                        mesh: voxel.clone(),
+                        material: wing_tip_material.clone(),
+                        transform: Transform::from_xyz(-1.5, 0.0, -0.15)
+                            .with_scale(Vec3::new(0.55, 0.7, 0.7)),
+                        ..default()
+                    });
+                    // Primary feathers
+                    for j in 0..5 {
+                        wing.spawn(PbrBundle {
+                            mesh: voxel.clone(),
+                            material: wing_tip_material.clone(),
+                            transform: Transform::from_xyz(
+                                -1.8 - j as f32 * 0.12,
+                                0.0,
+                                -0.2 - j as f32 * 0.08,
+                            )
+                            .with_scale(Vec3::new(0.18, 0.5, 0.35 - j as f32 * 0.04)),
+                            ..default()
+                        });
+                    }
+                });
+
+            // Right wing - multi-segment with feathers
+            parent
+                .spawn((
+                    PbrBundle {
+                        mesh: voxel.clone(),
+                        material: wing_material.clone(),
+                        transform: Transform::from_xyz(0.55, 0.0, 0.05)
+                            .with_scale(Vec3::new(0.6, 0.08, 0.45)),
+                        ..default()
+                    },
+                    Wing {
+                        is_left: false,
+                        _base_x: 0.55,
+                    },
+                    BodyPart::Wing,
+                ))
+                .with_children(|wing| {
+                    // Wing mid section
+                    wing.spawn(PbrBundle {
+                        mesh: voxel.clone(),
+                        material: wing_material.clone(),
+                        transform: Transform::from_xyz(0.85, 0.0, -0.05)
+                            .with_scale(Vec3::new(0.9, 0.9, 0.85)),
+                        ..default()
+                    });
+                    // Wing tip
+                    wing.spawn(PbrBundle {
+                        mesh: voxel.clone(),
+                        material: wing_tip_material.clone(),
+                        transform: Transform::from_xyz(1.5, 0.0, -0.15)
+                            .with_scale(Vec3::new(0.55, 0.7, 0.7)),
+                        ..default()
+                    });
+                    // Primary feathers
+                    for j in 0..5 {
+                        wing.spawn(PbrBundle {
+                            mesh: voxel.clone(),
+                            material: wing_tip_material.clone(),
+                            transform: Transform::from_xyz(
+                                1.8 + j as f32 * 0.12,
+                                0.0,
+                                -0.2 - j as f32 * 0.08,
+                            )
+                            .with_scale(Vec3::new(0.18, 0.5, 0.35 - j as f32 * 0.04)),
+                            ..default()
+                        });
+                    }
+                });
+
+            // Feet/legs (tucked when flying)
+            for side in [-1.0, 1.0] {
+                parent.spawn(PbrBundle {
                     mesh: voxel.clone(),
-                    material: wing_material.clone(),
-                    transform: Transform::from_xyz(-0.8, 0.0, 0.0)
-                        .with_scale(Vec3::new(1.0, 0.1, 0.5)),
+                    material: feet_material.clone(),
+                    transform: Transform::from_xyz(side * 0.2, -0.45, -0.1)
+                        .with_scale(Vec3::new(0.08, 0.25, 0.15)),
                     ..default()
-                },
-                Wing {
-                    is_left: true,
-                    _base_x: -0.8,
-                },
-                BodyPart::Wing,
-            ));
-            // Right wing
-            parent.spawn((
-                PbrBundle {
-                    mesh: voxel.clone(),
-                    material: wing_material,
-                    transform: Transform::from_xyz(0.8, 0.0, 0.0)
-                        .with_scale(Vec3::new(1.0, 0.1, 0.5)),
-                    ..default()
-                },
-                Wing {
-                    is_left: false,
-                    _base_x: 0.8,
-                },
-                BodyPart::Wing,
-            ));
+                });
+            }
         });
 
     println!(

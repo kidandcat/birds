@@ -147,40 +147,61 @@ pub fn setup_environment(
         }
     }
 
-    // Trees
+    // Tree materials
     let trunk_mesh = meshes.add(Cuboid::new(1.0, 4.0, 1.0));
     let trunk_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.45, 0.3, 0.15),
+        perceptual_roughness: 0.95,
+        ..default()
+    });
+    let dark_trunk = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.3, 0.2, 0.1),
+        perceptual_roughness: 0.95,
         ..default()
     });
     let leaves_mesh = meshes.add(Cuboid::new(3.0, 3.0, 3.0));
     let leaves_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.15, 0.5, 0.15),
+        perceptual_roughness: 0.9,
         ..default()
     });
     let dark_leaves = materials.add(StandardMaterial {
         base_color: Color::srgb(0.1, 0.4, 0.1),
+        perceptual_roughness: 0.9,
+        ..default()
+    });
+    let autumn_leaves = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.8, 0.4, 0.1),
+        perceptual_roughness: 0.85,
+        ..default()
+    });
+    let yellow_leaves = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.9, 0.75, 0.2),
+        perceptual_roughness: 0.85,
         ..default()
     });
 
-    for _ in 0..80 {
-        let x: f32 = rng.gen_range(-800.0..800.0);
-        let z: f32 = rng.gen_range(-800.0..800.0);
-        if x.abs() < 25.0 {
-            continue;
-        }
+    // Helper to spawn a tree
+    let spawn_tree = |commands: &mut Commands,
+                      x: f32,
+                      z: f32,
+                      height_mult: f32,
+                      trunk_mesh: &Handle<Mesh>,
+                      trunk_mat: &Handle<StandardMaterial>,
+                      leaves_mesh: &Handle<Mesh>,
+                      leaf_mat: &Handle<StandardMaterial>,
+                      island_y: f32| {
+        let trunk_height = 12.0 * height_mult;
+        let tree_width = trunk_height * 0.35;
+        let trunk_width = tree_width * 0.25;
 
-        let trunk_height = rng.gen_range(8.0..20.0);
-        let tree_width = trunk_height * 0.4;
-
-        let trunk_width = tree_width * 0.3;
         let trunk_visual_scale = Vec3::new(trunk_width, trunk_height / 4.0, trunk_width);
         let trunk_half_extents = Vec3::new(trunk_width / 2.0, trunk_height / 2.0, trunk_width / 2.0);
         commands.spawn((
             PbrBundle {
                 mesh: trunk_mesh.clone(),
-                material: trunk_material.clone(),
-                transform: Transform::from_xyz(x, island_surface_y + trunk_height / 2.0, z)
+                material: trunk_mat.clone(),
+                transform: Transform::from_xyz(x, island_y + trunk_height / 2.0, z)
                     .with_scale(trunk_visual_scale),
                 ..default()
             },
@@ -189,16 +210,11 @@ pub fn setup_environment(
             },
         ));
 
-        let leaf_mat = if rng.gen_bool(0.5) {
-            leaves_material.clone()
-        } else {
-            dark_leaves.clone()
-        };
         for layer in 0..4 {
-            let size = (tree_width * 2.0) - layer as f32 * 1.5;
+            let size = (tree_width * 2.0) - layer as f32 * 1.2;
             let leaf_scale = Vec3::splat(size / 3.0);
             let leaf_half_extents = Vec3::splat(size / 2.0);
-            let leaf_y = island_surface_y + trunk_height + 2.0 + layer as f32 * 3.0;
+            let leaf_y = island_y + trunk_height + 1.5 + layer as f32 * 2.5;
             commands.spawn((
                 PbrBundle {
                     mesh: leaves_mesh.clone(),
@@ -211,6 +227,333 @@ pub fn setup_environment(
                 },
             ));
         }
+    };
+
+    // ===== DENSE FOREST AREA (Northeast) =====
+    let forest_center_x = 500.0;
+    let forest_center_z = 500.0;
+    let forest_radius = 250.0;
+
+    for _ in 0..200 {
+        let angle: f32 = rng.gen_range(0.0..PI * 2.0);
+        let dist: f32 = rng.gen_range(0.0..forest_radius);
+        let x = forest_center_x + angle.cos() * dist;
+        let z = forest_center_z + angle.sin() * dist;
+
+        if x.abs() > 850.0 || z.abs() > 850.0 {
+            continue;
+        }
+
+        let height_mult = rng.gen_range(0.6..1.2);
+        let leaf_choice = rng.gen_range(0..4);
+        let leaf_mat = match leaf_choice {
+            0 => leaves_material.clone(),
+            1 => dark_leaves.clone(),
+            2 => autumn_leaves.clone(),
+            _ => leaves_material.clone(),
+        };
+
+        spawn_tree(
+            &mut commands,
+            x,
+            z,
+            height_mult,
+            &trunk_mesh,
+            &trunk_material,
+            &leaves_mesh,
+            &leaf_mat,
+            island_surface_y,
+        );
+    }
+
+    // ===== GIANT TREE AREA (Southwest) =====
+    let giant_tree_positions = [
+        (-450.0, -400.0),
+        (-550.0, -500.0),
+        (-400.0, -550.0),
+        (-600.0, -350.0),
+        (-350.0, -450.0),
+        (-500.0, -600.0),
+        (-650.0, -500.0),
+    ];
+
+    for (gx, gz) in giant_tree_positions {
+        let trunk_height = rng.gen_range(60.0..90.0);
+        let trunk_width = rng.gen_range(8.0..12.0);
+
+        // Giant trunk
+        commands.spawn((
+            PbrBundle {
+                mesh: trunk_mesh.clone(),
+                material: dark_trunk.clone(),
+                transform: Transform::from_xyz(gx, island_surface_y + trunk_height / 2.0, gz)
+                    .with_scale(Vec3::new(trunk_width, trunk_height / 4.0, trunk_width)),
+                ..default()
+            },
+            Obstacle {
+                half_extents: Vec3::new(trunk_width / 2.0, trunk_height / 2.0, trunk_width / 2.0),
+            },
+        ));
+
+        // Giant tree canopy - multiple large leaf clusters
+        let canopy_size = trunk_width * 3.0;
+        for layer in 0..6 {
+            let size = canopy_size * (1.0 - layer as f32 * 0.12);
+            let leaf_y = island_surface_y + trunk_height + layer as f32 * 8.0;
+
+            // Central cluster
+            commands.spawn((
+                PbrBundle {
+                    mesh: leaves_mesh.clone(),
+                    material: dark_leaves.clone(),
+                    transform: Transform::from_xyz(gx, leaf_y, gz)
+                        .with_scale(Vec3::splat(size / 3.0)),
+                    ..default()
+                },
+                Obstacle {
+                    half_extents: Vec3::splat(size / 2.0),
+                },
+            ));
+
+            // Side clusters for fuller canopy
+            if layer < 4 {
+                for angle in [0.0, PI / 2.0, PI, PI * 1.5] {
+                    let offset = size * 0.4;
+                    let ox = angle.cos() * offset;
+                    let oz = angle.sin() * offset;
+                    commands.spawn(PbrBundle {
+                        mesh: leaves_mesh.clone(),
+                        material: leaves_material.clone(),
+                        transform: Transform::from_xyz(gx + ox, leaf_y - 2.0, gz + oz)
+                            .with_scale(Vec3::splat(size * 0.25)),
+                        ..default()
+                    });
+                }
+            }
+        }
+
+        // Roots at base
+        for i in 0..6 {
+            let angle = i as f32 * PI / 3.0 + rng.gen_range(-0.2..0.2);
+            let root_len = rng.gen_range(8.0..15.0);
+            let rx = gx + angle.cos() * trunk_width * 0.8;
+            let rz = gz + angle.sin() * trunk_width * 0.8;
+            commands.spawn(PbrBundle {
+                mesh: trunk_mesh.clone(),
+                material: dark_trunk.clone(),
+                transform: Transform::from_xyz(rx, island_surface_y + 1.5, rz)
+                    .with_rotation(Quat::from_rotation_z(angle + PI / 2.0) * Quat::from_rotation_x(0.5))
+                    .with_scale(Vec3::new(2.0, root_len / 4.0, 2.0)),
+                ..default()
+            });
+        }
+    }
+
+    // ===== LAKE (Southeast) =====
+    let lake_center_x = 400.0;
+    let lake_center_z = -450.0;
+    let lake_radius = 180.0;
+
+    // Lake water surface
+    let lake_water = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.15, 0.4, 0.55, 0.85),
+        alpha_mode: AlphaMode::Blend,
+        perceptual_roughness: 0.05,
+        metallic: 0.4,
+        ..default()
+    });
+    let lake_bed = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.25, 0.2, 0.15),
+        perceptual_roughness: 0.95,
+        ..default()
+    });
+    let sand_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.85, 0.78, 0.6),
+        perceptual_roughness: 0.9,
+        ..default()
+    });
+
+    // Lake bed (depression)
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Cylinder::new(lake_radius, 3.0)),
+        material: lake_bed,
+        transform: Transform::from_xyz(lake_center_x, island_surface_y - 1.0, lake_center_z),
+        ..default()
+    });
+
+    // Lake water
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Cylinder::new(lake_radius - 5.0, 0.5)),
+        material: lake_water,
+        transform: Transform::from_xyz(lake_center_x, island_surface_y + 0.3, lake_center_z),
+        ..default()
+    });
+
+    // Sandy beach around lake
+    for i in 0..40 {
+        let angle = i as f32 * PI * 2.0 / 40.0;
+        let beach_dist = lake_radius + rng.gen_range(5.0..20.0);
+        let bx = lake_center_x + angle.cos() * beach_dist;
+        let bz = lake_center_z + angle.sin() * beach_dist;
+        let beach_size = rng.gen_range(8.0..15.0);
+
+        commands.spawn(PbrBundle {
+            mesh: meshes.add(Sphere::new(1.0)),
+            material: sand_material.clone(),
+            transform: Transform::from_xyz(bx, island_surface_y - 0.3, bz)
+                .with_scale(Vec3::new(beach_size, 1.5, beach_size)),
+            ..default()
+        });
+    }
+
+    // Lily pads on lake
+    let lily_pad = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.2, 0.5, 0.2),
+        perceptual_roughness: 0.7,
+        ..default()
+    });
+    for _ in 0..15 {
+        let angle: f32 = rng.gen_range(0.0..PI * 2.0);
+        let dist: f32 = rng.gen_range(20.0..lake_radius - 30.0);
+        let lx = lake_center_x + angle.cos() * dist;
+        let lz = lake_center_z + angle.sin() * dist;
+
+        commands.spawn(PbrBundle {
+            mesh: meshes.add(Cylinder::new(rng.gen_range(2.0..4.0), 0.2)),
+            material: lily_pad.clone(),
+            transform: Transform::from_xyz(lx, island_surface_y + 0.5, lz),
+            ..default()
+        });
+    }
+
+    // ===== SCATTERED TREES (rest of island) =====
+    for _ in 0..60 {
+        let x: f32 = rng.gen_range(-800.0..800.0);
+        let z: f32 = rng.gen_range(-800.0..800.0);
+
+        // Skip if in special areas
+        let dist_to_forest = ((x - forest_center_x).powi(2) + (z - forest_center_z).powi(2)).sqrt();
+        let dist_to_lake = ((x - lake_center_x).powi(2) + (z - lake_center_z).powi(2)).sqrt();
+        let in_giant_area = x < -300.0 && z < -300.0;
+
+        if dist_to_forest < forest_radius + 50.0 || dist_to_lake < lake_radius + 40.0 || in_giant_area {
+            continue;
+        }
+        if x.abs() < 30.0 {
+            continue;
+        }
+
+        let height_mult = rng.gen_range(0.8..1.5);
+        let leaf_choice = rng.gen_range(0..5);
+        let leaf_mat = match leaf_choice {
+            0 => leaves_material.clone(),
+            1 => dark_leaves.clone(),
+            2 => autumn_leaves.clone(),
+            3 => yellow_leaves.clone(),
+            _ => leaves_material.clone(),
+        };
+
+        spawn_tree(
+            &mut commands,
+            x,
+            z,
+            height_mult,
+            &trunk_mesh,
+            &trunk_material,
+            &leaves_mesh,
+            &leaf_mat,
+            island_surface_y,
+        );
+    }
+
+    // ===== FLOWER MEADOW (Northwest) =====
+    let meadow_center_x = -450.0;
+    let meadow_center_z = 450.0;
+    let flower_colors = [
+        Color::srgb(0.9, 0.3, 0.3),  // Red
+        Color::srgb(0.9, 0.9, 0.3),  // Yellow
+        Color::srgb(0.6, 0.3, 0.8),  // Purple
+        Color::srgb(0.95, 0.6, 0.7), // Pink
+        Color::srgb(0.3, 0.5, 0.9),  // Blue
+    ];
+
+    for _ in 0..100 {
+        let angle: f32 = rng.gen_range(0.0..PI * 2.0);
+        let dist: f32 = rng.gen_range(0.0..200.0);
+        let fx = meadow_center_x + angle.cos() * dist;
+        let fz = meadow_center_z + angle.sin() * dist;
+
+        if fx.abs() > 800.0 || fz.abs() > 800.0 {
+            continue;
+        }
+
+        let flower_color = flower_colors[rng.gen_range(0..flower_colors.len())];
+        let flower_mat = materials.add(StandardMaterial {
+            base_color: flower_color,
+            emissive: LinearRgba::new(flower_color.to_srgba().red * 0.2, flower_color.to_srgba().green * 0.2, flower_color.to_srgba().blue * 0.2, 1.0),
+            ..default()
+        });
+
+        // Flower stem
+        commands.spawn(PbrBundle {
+            mesh: trunk_mesh.clone(),
+            material: materials.add(StandardMaterial {
+                base_color: Color::srgb(0.2, 0.5, 0.2),
+                ..default()
+            }),
+            transform: Transform::from_xyz(fx, island_surface_y + 0.8, fz)
+                .with_scale(Vec3::new(0.1, 0.4, 0.1)),
+            ..default()
+        });
+
+        // Flower head
+        commands.spawn(PbrBundle {
+            mesh: meshes.add(Sphere::new(1.0)),
+            material: flower_mat,
+            transform: Transform::from_xyz(fx, island_surface_y + 2.0, fz)
+                .with_scale(Vec3::splat(rng.gen_range(0.4..0.8))),
+            ..default()
+        });
+    }
+
+    // ===== ROCKY OUTCROP (center-west) =====
+    let rock_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.5, 0.48, 0.45),
+        perceptual_roughness: 0.95,
+        ..default()
+    });
+    let dark_rock = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.35, 0.33, 0.3),
+        perceptual_roughness: 0.95,
+        ..default()
+    });
+
+    for i in 0..12 {
+        let angle = i as f32 * PI / 6.0;
+        let dist = rng.gen_range(15.0..40.0);
+        let rx = -200.0 + angle.cos() * dist;
+        let rz = 100.0 + angle.sin() * dist;
+        let rock_height = rng.gen_range(5.0..15.0);
+        let rock_width = rng.gen_range(4.0..10.0);
+
+        commands.spawn((
+            PbrBundle {
+                mesh: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+                material: if rng.gen_bool(0.5) { rock_material.clone() } else { dark_rock.clone() },
+                transform: Transform::from_xyz(rx, island_surface_y + rock_height / 2.0, rz)
+                    .with_rotation(Quat::from_euler(
+                        EulerRot::XYZ,
+                        rng.gen_range(-0.2..0.2),
+                        rng.gen_range(0.0..PI),
+                        rng.gen_range(-0.2..0.2),
+                    ))
+                    .with_scale(Vec3::new(rock_width, rock_height, rock_width * 0.8)),
+                ..default()
+            },
+            Obstacle {
+                half_extents: Vec3::new(rock_width / 2.0, rock_height / 2.0, rock_width * 0.4),
+            },
+        ));
     }
 
     // Mountains

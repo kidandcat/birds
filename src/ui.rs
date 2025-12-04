@@ -6,6 +6,55 @@ use crate::components::{
 };
 use crate::state::{AppState, GameState, SelectedBirdType};
 
+/// Helper to create a stat bar
+fn spawn_stat_bar(parent: &mut ChildBuilder, label: &str, value: f32, max_value: f32, color: Color) {
+    parent
+        .spawn(NodeBundle {
+            style: Style {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                margin: UiRect::top(Val::Px(4.0)),
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|row| {
+            // Label
+            row.spawn(TextBundle::from_section(
+                label,
+                TextStyle {
+                    font_size: 11.0,
+                    color: Color::srgba(1.0, 1.0, 1.0, 0.7),
+                    ..default()
+                },
+            ));
+            // Bar background
+            row.spawn(NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(6.0),
+                    margin: UiRect::top(Val::Px(2.0)),
+                    ..default()
+                },
+                background_color: Color::srgba(0.0, 0.0, 0.0, 0.4).into(),
+                ..default()
+            })
+            .with_children(|bar_bg| {
+                // Bar fill
+                let fill_percent = (value / max_value * 100.0).min(100.0);
+                bar_bg.spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(fill_percent),
+                        height: Val::Percent(100.0),
+                        ..default()
+                    },
+                    background_color: color.into(),
+                    ..default()
+                });
+            });
+        });
+}
+
 /// Setup bird selection UI
 pub fn setup_selection_ui(mut commands: Commands) {
     commands
@@ -19,34 +68,56 @@ pub fn setup_selection_ui(mut commands: Commands) {
                     justify_content: JustifyContent::Center,
                     ..default()
                 },
-                background_color: Color::srgba(0.0, 0.0, 0.0, 0.7).into(),
+                background_color: Color::srgba(0.05, 0.08, 0.15, 0.92).into(),
                 ..default()
             },
             SelectionUI,
         ))
         .with_children(|parent| {
-            // Title
+            // Title with shadow effect
+            parent
+                .spawn(NodeBundle {
+                    style: Style {
+                        margin: UiRect::bottom(Val::Px(10.0)),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|title_container| {
+                    title_container.spawn(
+                        TextBundle::from_section(
+                            "FLIGHT QUEST",
+                            TextStyle {
+                                font_size: 56.0,
+                                color: Color::srgb(0.95, 0.85, 0.6),
+                                ..default()
+                            },
+                        ),
+                    );
+                });
+
+            // Subtitle
             parent.spawn(
                 TextBundle::from_section(
                     "Choose Your Bird",
                     TextStyle {
-                        font_size: 48.0,
-                        color: Color::WHITE,
+                        font_size: 28.0,
+                        color: Color::srgba(1.0, 1.0, 1.0, 0.8),
                         ..default()
                     },
                 )
                 .with_style(Style {
-                    margin: UiRect::bottom(Val::Px(40.0)),
+                    margin: UiRect::bottom(Val::Px(35.0)),
                     ..default()
                 }),
             );
 
-            // Bird buttons container
+            // Bird cards container
             parent
                 .spawn(NodeBundle {
                     style: Style {
                         flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(20.0),
+                        column_gap: Val::Px(25.0),
                         ..default()
                     },
                     ..default()
@@ -59,56 +130,168 @@ pub fn setup_selection_ui(mut commands: Commands) {
                         BirdType::Albatross,
                     ] {
                         let stats = BirdStats::for_type(bird_type);
+                        let base_color = bird_type.color();
+                        let rgba = base_color.to_srgba();
+
+                        // Card container with border effect
                         parent
-                            .spawn((
-                                ButtonBundle {
-                                    style: Style {
-                                        width: Val::Px(150.0),
-                                        height: Val::Px(180.0),
-                                        flex_direction: FlexDirection::Column,
-                                        align_items: AlignItems::Center,
-                                        justify_content: JustifyContent::Center,
-                                        padding: UiRect::all(Val::Px(10.0)),
-                                        ..default()
-                                    },
-                                    background_color: bird_type.color().into(),
+                            .spawn(NodeBundle {
+                                style: Style {
+                                    padding: UiRect::all(Val::Px(3.0)),
                                     ..default()
                                 },
-                                BirdButton(bird_type),
-                            ))
-                            .with_children(|parent| {
-                                parent.spawn(TextBundle::from_section(
-                                    bird_type.name(),
-                                    TextStyle {
-                                        font_size: 24.0,
-                                        color: Color::WHITE,
-                                        ..default()
-                                    },
-                                ));
-                                parent.spawn(TextBundle::from_section(
-                                    format!("Size: {:.1}x", bird_type.scale()),
-                                    TextStyle {
-                                        font_size: 14.0,
-                                        color: Color::srgba(1.0, 1.0, 1.0, 0.8),
-                                        ..default()
-                                    },
-                                ));
-                                parent.spawn(TextBundle::from_section(
-                                    format!("Speed: {:.0}", stats.perfect_glide_speed),
-                                    TextStyle {
-                                        font_size: 14.0,
-                                        color: Color::srgba(1.0, 1.0, 1.0, 0.8),
-                                        ..default()
-                                    },
-                                ));
-                                parent.spawn(TextBundle::from_section(
-                                    format!("Agility: {:.1}", stats.turn_rate),
-                                    TextStyle {
-                                        font_size: 14.0,
-                                        color: Color::srgba(1.0, 1.0, 1.0, 0.8),
-                                        ..default()
-                                    },
-                                ));
+                                background_color: Color::srgba(
+                                    rgba.red * 0.5,
+                                    rgba.green * 0.5,
+                                    rgba.blue * 0.5,
+                                    0.8,
+                                )
+                                .into(),
+                                ..default()
+                            })
+                            .with_children(|border| {
+                                // Main card button
+                                border
+                                    .spawn((
+                                        ButtonBundle {
+                                            style: Style {
+                                                width: Val::Px(180.0),
+                                                height: Val::Px(260.0),
+                                                flex_direction: FlexDirection::Column,
+                                                align_items: AlignItems::Center,
+                                                padding: UiRect::all(Val::Px(12.0)),
+                                                ..default()
+                                            },
+                                            background_color: Color::srgba(0.12, 0.15, 0.22, 0.95)
+                                                .into(),
+                                            ..default()
+                                        },
+                                        BirdButton(bird_type),
+                                    ))
+                                    .with_children(|card| {
+                                        // Bird icon/preview area
+                                        card.spawn(NodeBundle {
+                                            style: Style {
+                                                width: Val::Px(80.0),
+                                                height: Val::Px(60.0),
+                                                margin: UiRect::bottom(Val::Px(8.0)),
+                                                justify_content: JustifyContent::Center,
+                                                align_items: AlignItems::Center,
+                                                ..default()
+                                            },
+                                            background_color: Color::srgba(
+                                                rgba.red * 0.3,
+                                                rgba.green * 0.3,
+                                                rgba.blue * 0.3,
+                                                0.5,
+                                            )
+                                            .into(),
+                                            ..default()
+                                        })
+                                        .with_children(|preview| {
+                                            // Simple bird silhouette using nested boxes
+                                            preview
+                                                .spawn(NodeBundle {
+                                                    style: Style {
+                                                        width: Val::Px(40.0 * bird_type.scale()),
+                                                        height: Val::Px(20.0 * bird_type.scale()),
+                                                        justify_content: JustifyContent::Center,
+                                                        align_items: AlignItems::Center,
+                                                        ..default()
+                                                    },
+                                                    background_color: base_color.into(),
+                                                    ..default()
+                                                })
+                                                .with_children(|body| {
+                                                    // Wings
+                                                    body.spawn(NodeBundle {
+                                                        style: Style {
+                                                            width: Val::Px(60.0 * bird_type.scale()),
+                                                            height: Val::Px(8.0 * bird_type.scale()),
+                                                            position_type: PositionType::Absolute,
+                                                            ..default()
+                                                        },
+                                                        background_color: Color::srgb(
+                                                            rgba.red * 0.7,
+                                                            rgba.green * 0.7,
+                                                            rgba.blue * 0.7,
+                                                        )
+                                                        .into(),
+                                                        ..default()
+                                                    });
+                                                });
+                                        });
+
+                                        // Bird name
+                                        card.spawn(TextBundle::from_section(
+                                            bird_type.name(),
+                                            TextStyle {
+                                                font_size: 22.0,
+                                                color: base_color,
+                                                ..default()
+                                            },
+                                        ));
+
+                                        // Size indicator
+                                        card.spawn(
+                                            TextBundle::from_section(
+                                                format!("Size: {:.1}x", bird_type.scale()),
+                                                TextStyle {
+                                                    font_size: 12.0,
+                                                    color: Color::srgba(1.0, 1.0, 1.0, 0.6),
+                                                    ..default()
+                                                },
+                                            )
+                                            .with_style(Style {
+                                                margin: UiRect::bottom(Val::Px(10.0)),
+                                                ..default()
+                                            }),
+                                        );
+
+                                        // Stats container
+                                        card.spawn(NodeBundle {
+                                            style: Style {
+                                                width: Val::Percent(100.0),
+                                                flex_direction: FlexDirection::Column,
+                                                ..default()
+                                            },
+                                            ..default()
+                                        })
+                                        .with_children(|stats_container| {
+                                            // Speed stat
+                                            spawn_stat_bar(
+                                                stats_container,
+                                                "Speed",
+                                                stats.perfect_glide_speed,
+                                                35.0,
+                                                Color::srgb(0.3, 0.8, 0.4),
+                                            );
+                                            // Agility stat
+                                            spawn_stat_bar(
+                                                stats_container,
+                                                "Agility",
+                                                stats.turn_rate,
+                                                1.5,
+                                                Color::srgb(0.4, 0.6, 0.9),
+                                            );
+                                            // Glide stat
+                                            spawn_stat_bar(
+                                                stats_container,
+                                                "Glide",
+                                                2.0 - stats.glide_efficiency,
+                                                2.0,
+                                                Color::srgb(0.9, 0.7, 0.3),
+                                            );
+                                            // Power stat
+                                            spawn_stat_bar(
+                                                stats_container,
+                                                "Power",
+                                                stats.flap_thrust,
+                                                25.0,
+                                                Color::srgb(0.9, 0.4, 0.4),
+                                            );
+                                        });
+                                    });
                             });
                     }
                 });
@@ -116,15 +299,31 @@ pub fn setup_selection_ui(mut commands: Commands) {
             // Instructions
             parent.spawn(
                 TextBundle::from_section(
-                    "Click to select",
+                    "Click a bird to begin your flight",
                     TextStyle {
-                        font_size: 20.0,
-                        color: Color::srgba(1.0, 1.0, 1.0, 0.6),
+                        font_size: 18.0,
+                        color: Color::srgba(1.0, 1.0, 1.0, 0.5),
                         ..default()
                     },
                 )
                 .with_style(Style {
-                    margin: UiRect::top(Val::Px(30.0)),
+                    margin: UiRect::top(Val::Px(35.0)),
+                    ..default()
+                }),
+            );
+
+            // Controls hint
+            parent.spawn(
+                TextBundle::from_section(
+                    "Controls: Mouse to steer • Space to flap/dive • WASD to walk when landed",
+                    TextStyle {
+                        font_size: 14.0,
+                        color: Color::srgba(1.0, 1.0, 1.0, 0.35),
+                        ..default()
+                    },
+                )
+                .with_style(Style {
+                    margin: UiRect::top(Val::Px(15.0)),
                     ..default()
                 }),
             );
