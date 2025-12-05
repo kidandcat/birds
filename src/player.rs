@@ -4,7 +4,7 @@ use std::f32::consts::PI;
 
 use crate::bird::{BirdStats, BirdType};
 use crate::components::{
-    AiBird, Bird, BodyPart, Drafting, FlapState, Obstacle, Player, Squished, WindParticle, Wing,
+    AiBird, Bird, BodyPart, Drafting, FlapState, HuntingStrike, Obstacle, Player, Prey, Squished, WindParticle, Wing,
 };
 use crate::state::{AppState, GameState, SelectedBirdType};
 use rand::Rng;
@@ -40,31 +40,37 @@ pub fn setup_player(
     let body_material = materials.add(StandardMaterial {
         base_color,
         perceptual_roughness: 0.8,
+        fog_enabled: false,
         ..default()
     });
     let head_material = materials.add(StandardMaterial {
         base_color: head_color,
         perceptual_roughness: 0.7,
+        fog_enabled: false,
         ..default()
     });
     let wing_material = materials.add(StandardMaterial {
         base_color: wing_color,
         perceptual_roughness: 0.9,
+        fog_enabled: false,
         ..default()
     });
     let wing_tip_material = materials.add(StandardMaterial {
         base_color: wing_tip_color,
         perceptual_roughness: 0.9,
+        fog_enabled: false,
         ..default()
     });
     let belly_material = materials.add(StandardMaterial {
         base_color: belly_color,
         perceptual_roughness: 0.6,
+        fog_enabled: false,
         ..default()
     });
     let beak_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.95, 0.7, 0.2),
         perceptual_roughness: 0.5,
+        fog_enabled: false,
         ..default()
     });
     let feet_material = beak_material.clone();
@@ -72,42 +78,50 @@ pub fn setup_player(
         base_color: Color::srgb(0.05, 0.05, 0.05),
         perceptual_roughness: 0.1,
         metallic: 0.5,
+        fog_enabled: false,
         ..default()
     });
     let eye_white = materials.add(StandardMaterial {
         base_color: Color::srgb(0.98, 0.98, 0.98),
         perceptual_roughness: 0.3,
+        fog_enabled: false,
         ..default()
     });
 
-    commands
-        .spawn((
-            PbrBundle {
-                mesh: voxel.clone(),
-                material: body_material.clone(),
-                transform: Transform::from_xyz(0.0, 125.0, 0.0).with_scale(Vec3::new(
-                    0.75 * player_scale * 3.0,
-                    0.7 * player_scale * 3.0,
-                    1.1 * player_scale * 3.0,
-                )),
-                ..default()
-            },
-            Player,
-            Bird {
-                speed: player_stats.perfect_glide_speed,
-                pitch: 0.0,
-                yaw: 0.0,
-                roll: 0.0,
-                velocity: Vec3::new(0.0, 0.0, player_stats.perfect_glide_speed),
-                grounded: false,
-                damage_timer: 0.0,
-                walk_timer: 0.0,
-                is_walking: false,
-            },
-            player_stats,
-            Drafting { is_drafting: false },
-            BodyPart::Body,
-        ))
+    let mut player_entity = commands.spawn((
+        PbrBundle {
+            mesh: voxel.clone(),
+            material: body_material.clone(),
+            transform: Transform::from_xyz(0.0, 125.0, 0.0).with_scale(Vec3::new(
+                0.75 * player_scale * 3.0,
+                0.7 * player_scale * 3.0,
+                1.1 * player_scale * 3.0,
+            )),
+            ..default()
+        },
+        Player,
+        Bird {
+            speed: player_stats.perfect_glide_speed,
+            pitch: 0.0,
+            yaw: 0.0,
+            roll: 0.0,
+            velocity: Vec3::new(0.0, 0.0, player_stats.perfect_glide_speed),
+            grounded: false,
+            damage_timer: 0.0,
+            walk_timer: 0.0,
+            is_walking: false,
+        },
+        player_stats,
+        Drafting { is_drafting: false },
+        BodyPart::Body,
+    ));
+
+    // Sparrows are prey - can be hunted by big birds
+    if player_bird_type == BirdType::Sparrow {
+        player_entity.insert(Prey);
+    }
+
+    player_entity
         .with_children(|parent| {
             // Belly (lighter underside)
             parent.spawn(PbrBundle {
@@ -375,7 +389,7 @@ pub fn cursor_toggle(
 
 /// Handle player input for pitch/yaw control
 pub fn player_input(
-    mut query: Query<(&mut Bird, &BirdStats), (With<Player>, Without<Squished>)>,
+    mut query: Query<(&mut Bird, &BirdStats), (With<Player>, Without<Squished>, Without<HuntingStrike>)>,
     mut motion_events: EventReader<bevy::input::mouse::MouseMotion>,
     time: Res<Time>,
     mut no_input_timer: Local<f32>,
@@ -421,7 +435,7 @@ pub fn player_input(
 
 /// Handle bird movement physics
 pub fn bird_movement(
-    mut query: Query<(&mut Bird, &mut Transform, Option<&BirdStats>), (Without<AiBird>, Without<Squished>)>,
+    mut query: Query<(&mut Bird, &mut Transform, Option<&BirdStats>), (Without<AiBird>, Without<Squished>, Without<HuntingStrike>)>,
     camera_query: Query<&Transform, (With<Camera3d>, Without<Bird>)>,
     obstacle_query: Query<(&Transform, &Obstacle), Without<Bird>>,
     flap_state: Res<FlapState>,
@@ -603,12 +617,12 @@ pub fn bird_movement(
                 }
                 BirdType::Albatross => {
                     // DYNAMIC SOARING: Catch wind currents for massive forward speed
-                    let ramp_time = 4.0;
+                    let ramp_time = 4.0;  // Gradual ramp up
                     let soar_factor = (flap_state.wings_closed_time / ramp_time).min(1.0);
 
                     // Gradually accelerate forward with wind assistance
                     let horizontal_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
-                    let wind_acceleration = 320.0 * soar_factor;  // Strong forward acceleration
+                    let wind_acceleration = 480.0 * soar_factor;  // Strong forward acceleration (1.5x)
                     bird.velocity += horizontal_forward * wind_acceleration * dt;
 
                     // Slight lift to maintain altitude
@@ -681,9 +695,9 @@ pub fn bird_movement(
                 bird.velocity = bird.velocity.normalize_or_zero() * cruise_speed;
             }
         } else if flap_state.space_held {
-            // Less drag during abilities for Hawk
+            // Less drag during abilities
             let ability_drag = match stats.bird_type {
-                BirdType::Hawk => 0.001,  // Very low drag during dive
+                BirdType::Hawk => 0.001,      // Very low drag during dive
                 _ => 0.005,
             };
             let drag = bird.velocity * bird.velocity.length() * ability_drag;
@@ -721,7 +735,7 @@ pub fn bird_movement(
 /// Handle obstacle collision
 pub fn obstacle_collision(
     mut commands: Commands,
-    mut bird_query: Query<(Entity, &mut Bird, &mut Transform, &BirdStats), (With<Player>, Without<Squished>)>,
+    mut bird_query: Query<(Entity, &mut Bird, &mut Transform, &BirdStats), (With<Player>, Without<Squished>, Without<HuntingStrike>)>,
     obstacle_query: Query<(&Transform, &Obstacle), Without<Player>>,
     time: Res<Time>,
 ) {
@@ -825,7 +839,7 @@ pub fn obstacle_collision(
 pub fn wing_flap(
     mut wing_query: Query<(&Wing, &mut Transform)>,
     mut head_query: Query<(&BodyPart, &mut Transform), Without<Wing>>,
-    mut player_query: Query<(&mut Bird, &BirdStats, &Children), (With<Player>, Without<Squished>)>,
+    mut player_query: Query<(&mut Bird, &BirdStats, &Children), (With<Player>, Without<Squished>, Without<HuntingStrike>)>,
     mut flap_state: ResMut<FlapState>,
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
@@ -1015,18 +1029,46 @@ pub fn wing_flap(
 
 /// Camera follow system
 pub fn camera_follow(
-    player_query: Query<(&Bird, &Transform, &BirdStats, Option<&Squished>), With<Player>>,
+    player_query: Query<(&Bird, &Transform, &BirdStats, Option<&Squished>, Option<&HuntingStrike>), With<Player>>,
     mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<Player>)>,
     time: Res<Time>,
     mut frame_count: Local<u32>,
 ) {
-    let Ok((bird, player_transform, stats, squished)) = player_query.get_single() else {
+    let Ok((bird, player_transform, stats, squished, hunting_strike)) = player_query.get_single() else {
         return;
     };
     let Ok(mut camera_transform) = camera_query.get_single_mut() else {
         return;
     };
     let dt = time.delta_seconds();
+
+    // Check if hunting strike - cinematic side view watching the lunge
+    if let Some(strike) = hunting_strike {
+        let total_time = 0.8;
+        let progress = 1.0 - (strike.timer / total_time).clamp(0.0, 1.0);
+
+        // Camera orbits to side view to watch the strike
+        let camera_distance = 20.0;
+
+        // Look at midpoint between hunter and prey
+        let look_target = strike.original_pos.lerp(strike.prey_pos, 0.5);
+
+        // Camera position: side view, slightly above
+        let strike_dir = (strike.prey_pos - strike.original_pos).normalize_or_zero();
+        let side_dir = Vec3::new(-strike_dir.z, 0.0, strike_dir.x); // Perpendicular
+
+        let cam_pos = look_target + side_dir * camera_distance + Vec3::Y * 8.0;
+
+        // Smooth camera movement
+        let smooth_factor = (6.0 * dt).min(1.0);
+        camera_transform.translation = camera_transform.translation.lerp(cam_pos, smooth_factor);
+
+        // Look at the action
+        let look_dir = (look_target - camera_transform.translation).normalize();
+        let target_rotation = Quat::from_rotation_arc(Vec3::NEG_Z, look_dir);
+        camera_transform.rotation = camera_transform.rotation.slerp(target_rotation, smooth_factor);
+        return;
+    }
 
     // Check if bird is squished - rotate camera to side view
     if let Some(squished) = squished {

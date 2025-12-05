@@ -130,3 +130,42 @@ pub struct Squished {
     pub collision_normal: Vec3, // Direction the bird got squished from
     pub original_scale: Vec3,  // Original scale to restore/animate from
 }
+
+/// Marks a bird as prey (sparrows) - can be hunted by big birds
+#[derive(Component)]
+pub struct Prey;
+
+/// AI Sparrow - flies around as prey
+#[derive(Component)]
+pub struct AiSparrow {
+    pub wander_timer: f32,
+    pub wander_direction: Vec3,
+    pub flee_target: Option<Vec3>,  // Position to flee from
+}
+
+/// Being captured by a hunter
+#[derive(Component)]
+pub struct Captured {
+    pub timer: f32,
+    pub hunter_pos: Vec3,
+}
+
+/// Player score resource
+#[derive(Resource, Default)]
+pub struct PlayerScore {
+    pub points: u32,
+    pub passive_timer: f32,  // For sparrow passive scoring
+}
+
+/// UI component for score display
+#[derive(Component)]
+pub struct ScoreText;
+
+/// Hunter strike animation when catching prey
+#[derive(Component)]
+pub struct HuntingStrike {
+    pub timer: f32,
+    pub original_scale: Vec3,  // Scale to restore after animation
+    pub original_pos: Vec3,    // Position when strike started
+    pub prey_pos: Vec3,        // Position of prey for camera to look at
+}

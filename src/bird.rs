@@ -60,53 +60,53 @@ impl BirdStats {
             BirdType::Sparrow => BirdStats {
                 bird_type,
                 glide_efficiency: 1.8,
-                min_glide_speed: 10.0,
-                perfect_glide_speed: 48.0,
+                min_glide_speed: 5.0,
+                perfect_glide_speed: 24.0,  // Halved
                 turn_rate: 1.2,
                 roll_rate: 4.0,
-                flap_thrust: 13.5,
+                flap_thrust: 6.75,          // Halved
                 flap_cooldown: 0.15,
-                max_dive_speed: 180.0,
-                acceleration: 35.0,
+                max_dive_speed: 90.0,       // Halved
+                acceleration: 17.5,         // Halved
                 walk_speed: 6.0,
             },
             BirdType::Hawk => BirdStats {
                 bird_type,
                 glide_efficiency: 1.0,
-                min_glide_speed: 10.0,
-                perfect_glide_speed: 45.0,
+                min_glide_speed: 15.0,
+                perfect_glide_speed: 67.5,   // 1.5x faster
                 turn_rate: 1.0,
                 roll_rate: 3.0,
-                flap_thrust: 18.0,      // Stronger flaps (was 12)
-                flap_cooldown: 0.18,    // Faster flapping (was 0.25)
-                max_dive_speed: 380.0,
-                acceleration: 37.5,
+                flap_thrust: 27.0,           // 1.5x thrust
+                flap_cooldown: 0.18,
+                max_dive_speed: 570.0,       // 1.5x faster
+                acceleration: 56.25,         // 1.5x faster
                 walk_speed: 5.0,
             },
             BirdType::Eagle => BirdStats {
                 bird_type,
                 glide_efficiency: 0.6,
-                min_glide_speed: 12.0,
-                perfect_glide_speed: 56.25,
+                min_glide_speed: 18.0,
+                perfect_glide_speed: 84.4,   // 1.5x faster
                 turn_rate: 0.7,
                 roll_rate: 2.0,
-                flap_thrust: 28.0,      // Very strong flaps
-                flap_cooldown: 0.35,    // Slower than Hawk (big bird)
-                max_dive_speed: 440.0,
-                acceleration: 45.0,
+                flap_thrust: 42.0,           // 1.5x thrust
+                flap_cooldown: 0.35,
+                max_dive_speed: 660.0,       // 1.5x faster
+                acceleration: 67.5,          // 1.5x faster
                 walk_speed: 4.0,
             },
             BirdType::Albatross => BirdStats {
                 bird_type,
                 glide_efficiency: 0.3,
-                min_glide_speed: 15.0,
-                perfect_glide_speed: 67.5,
+                min_glide_speed: 22.5,
+                perfect_glide_speed: 101.25, // 1.5x faster
                 turn_rate: 0.5,
                 roll_rate: 1.5,
-                flap_thrust: 22.5,
+                flap_thrust: 33.75,          // 1.5x thrust
                 flap_cooldown: 0.6,
-                max_dive_speed: 720.0,
-                acceleration: 52.5,
+                max_dive_speed: 1080.0,      // 1.5x faster
+                acceleration: 78.75,         // 1.5x faster
                 walk_speed: 3.0,
             },
         }

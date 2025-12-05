@@ -240,6 +240,7 @@ pub fn spawn_remote_player(
 
     let body_material = materials.add(StandardMaterial {
         base_color: color,
+        fog_enabled: false,
         ..default()
     });
     let body_light = materials.add(StandardMaterial {
@@ -248,22 +249,27 @@ pub fn spawn_remote_player(
             (rgba.green * 1.2).min(1.0),
             (rgba.blue * 1.2).min(1.0),
         ),
+        fog_enabled: false,
         ..default()
     });
     let wing_material = materials.add(StandardMaterial {
         base_color: Color::srgb(rgba.red * 0.8, rgba.green * 0.8, rgba.blue * 0.8),
+        fog_enabled: false,
         ..default()
     });
     let beak_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.95, 0.7, 0.2),
+        fog_enabled: false,
         ..default()
     });
     let eye_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.1, 0.1, 0.1),
+        fog_enabled: false,
         ..default()
     });
     let eye_white = materials.add(StandardMaterial {
         base_color: Color::srgb(1.0, 1.0, 1.0),
+        fog_enabled: false,
         ..default()
     });
 

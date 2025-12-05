@@ -2,8 +2,8 @@ use bevy::prelude::*;
 
 use crate::bird::{BirdStats, BirdType};
 use crate::components::{
-    BirdButton, DistanceText, DraftIndicator, Drafting, Goal, Player, SelectionUI,
-    ServerStatusIndicator,
+    BirdButton, DistanceText, DraftIndicator, Drafting, Goal, Player, PlayerScore, ScoreText,
+    SelectionUI, ServerStatusIndicator,
 };
 use crate::network::NetworkState;
 use crate::state::{AppState, GameState, SelectedBirdType};
@@ -453,4 +453,63 @@ pub fn update_server_status(
             text.sections[0].style.color = Color::srgba(0.5, 0.5, 0.5, 0.7);
         }
     }
+}
+
+/// Update score display
+pub fn update_score(
+    score: Res<PlayerScore>,
+    mut score_query: Query<&mut Text, With<ScoreText>>,
+    player_query: Query<&BirdStats, With<Player>>,
+) {
+    let Ok(mut text) = score_query.get_single_mut() else {
+        return;
+    };
+
+    let bird_type = player_query
+        .get_single()
+        .map(|s| s.bird_type)
+        .unwrap_or(BirdType::Hawk);
+
+    let role = if bird_type == BirdType::Sparrow {
+        "Survivor"
+    } else {
+        "Hunter"
+    };
+
+    text.sections[0].value = format!("Score: {} ({})", score.points, role);
+}
+
+/// Setup score UI (called on enter Playing)
+pub fn setup_score_ui(mut commands: Commands) {
+    commands.spawn((
+        TextBundle::from_section(
+            "Score: 0",
+            TextStyle {
+                font_size: 28.0,
+                color: Color::srgb(1.0, 0.9, 0.3),
+                ..default()
+            },
+        )
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            top: Val::Px(10.0),
+            right: Val::Px(20.0),
+            ..default()
+        }),
+        ScoreText,
+    ));
+}
+
+/// Cleanup score UI and reset score
+pub fn cleanup_score_ui(
+    mut commands: Commands,
+    score_query: Query<Entity, With<ScoreText>>,
+    mut score: ResMut<PlayerScore>,
+) {
+    for entity in score_query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    // Reset score when leaving
+    score.points = 0;
+    score.passive_timer = 0.0;
 }
