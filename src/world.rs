@@ -1,3 +1,4 @@
+use bevy::pbr::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
 use rand::Rng;
 use std::collections::HashSet;
@@ -5,7 +6,7 @@ use std::f32::consts::PI;
 
 use crate::components::{
     AiBird, Bird, Chunk, ChunkManager, DistanceText, DraftIndicator, Goal, Obstacle,
-    Player, VoxelChunk, Wing,
+    Player, ServerStatusIndicator, VoxelChunk, Wing,
 };
 
 /// Setup game environment
@@ -191,7 +192,7 @@ pub fn setup_environment(
                       leaves_mesh: &Handle<Mesh>,
                       leaf_mat: &Handle<StandardMaterial>,
                       island_y: f32| {
-        let trunk_height = 12.0 * height_mult;
+        let trunk_height = 24.0 * height_mult;  // 2x bigger base size
         let tree_width = trunk_height * 0.35;
         let trunk_width = tree_width * 0.25;
 
@@ -232,19 +233,19 @@ pub fn setup_environment(
     // ===== DENSE FOREST AREA (Northeast) =====
     let forest_center_x = 500.0;
     let forest_center_z = 500.0;
-    let forest_radius = 250.0;
+    let forest_radius = 400.0;  // Bigger forest
 
-    for _ in 0..200 {
+    for _ in 0..350 {  // More trees
         let angle: f32 = rng.gen_range(0.0..PI * 2.0);
         let dist: f32 = rng.gen_range(0.0..forest_radius);
         let x = forest_center_x + angle.cos() * dist;
         let z = forest_center_z + angle.sin() * dist;
 
-        if x.abs() > 850.0 || z.abs() > 850.0 {
+        if x.abs() > 900.0 || z.abs() > 900.0 {
             continue;
         }
 
-        let height_mult = rng.gen_range(0.6..1.2);
+        let height_mult = rng.gen_range(0.4..1.6);  // More size variation
         let leaf_choice = rng.gen_range(0..4);
         let leaf_mat = match leaf_choice {
             0 => leaves_material.clone(),
@@ -427,9 +428,9 @@ pub fn setup_environment(
     }
 
     // ===== SCATTERED TREES (rest of island) =====
-    for _ in 0..60 {
-        let x: f32 = rng.gen_range(-800.0..800.0);
-        let z: f32 = rng.gen_range(-800.0..800.0);
+    for _ in 0..100 {  // More scattered trees
+        let x: f32 = rng.gen_range(-900.0..900.0);
+        let z: f32 = rng.gen_range(-900.0..900.0);
 
         // Skip if in special areas
         let dist_to_forest = ((x - forest_center_x).powi(2) + (z - forest_center_z).powi(2)).sqrt();
@@ -443,7 +444,7 @@ pub fn setup_environment(
             continue;
         }
 
-        let height_mult = rng.gen_range(0.8..1.5);
+        let height_mult = rng.gen_range(0.5..2.0);  // More size variation
         let leaf_choice = rng.gen_range(0..5);
         let leaf_mat = match leaf_choice {
             0 => leaves_material.clone(),
@@ -556,41 +557,160 @@ pub fn setup_environment(
         ));
     }
 
-    // Mountains
+    // Mountains - detailed layered mountains, clustered in Northwest
     let mountain_mesh = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
-    let mountain_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.4, 0.35, 0.3),
-        ..default()
-    });
+    let mountain_colors = [
+        materials.add(StandardMaterial {
+            base_color: Color::srgb(0.45, 0.40, 0.35),
+            perceptual_roughness: 0.95,
+            ..default()
+        }),
+        materials.add(StandardMaterial {
+            base_color: Color::srgb(0.38, 0.35, 0.30),
+            perceptual_roughness: 0.95,
+            ..default()
+        }),
+        materials.add(StandardMaterial {
+            base_color: Color::srgb(0.32, 0.30, 0.28),
+            perceptual_roughness: 0.95,
+            ..default()
+        }),
+        materials.add(StandardMaterial {
+            base_color: Color::srgb(0.50, 0.48, 0.45),
+            perceptual_roughness: 0.9,
+            ..default()
+        }),
+    ];
     let snow_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.95, 0.95, 0.98),
+        perceptual_roughness: 0.8,
         ..default()
     });
 
-    for _ in 0..15 {
-        let x = rng.gen_range(-800.0..800.0);
-        let z = rng.gen_range(-800.0..800.0);
-        let height = rng.gen_range(20.0..40.0);
-        let width = rng.gen_range(15.0..30.0);
-        commands.spawn((
-            PbrBundle {
+    // Mountain range center (Northwest area, opposite to forest)
+    let mountain_center_x = -550.0;
+    let mountain_center_z = 550.0;
+
+    for _ in 0..18 {
+        // Cluster mountains together
+        let angle: f32 = rng.gen_range(0.0..PI * 2.0);
+        let dist: f32 = rng.gen_range(0.0..300.0);
+        let base_x = mountain_center_x + angle.cos() * dist;
+        let base_z = mountain_center_z + angle.sin() * dist;
+
+        // Vary height based on distance from center (taller near center)
+        let dist_factor = 1.0 - (dist / 350.0).min(0.6);
+        let total_height = rng.gen_range(100.0..200.0) * (0.6 + dist_factor * 0.6);
+        let base_width = rng.gen_range(80.0..140.0);
+
+        // Build mountain with stacked layers (pyramid-like)
+        let num_layers = rng.gen_range(6..10);
+        let layer_height = total_height / num_layers as f32;
+
+        for layer in 0..num_layers {
+            let layer_progress = layer as f32 / num_layers as f32;
+            let layer_width = base_width * (1.0 - layer_progress * 0.7);
+            let layer_y = island_surface_y + layer as f32 * layer_height + layer_height / 2.0;
+
+            // Offset each layer slightly for jagged look
+            let offset_x = rng.gen_range(-5.0..5.0) * (1.0 - layer_progress);
+            let offset_z = rng.gen_range(-5.0..5.0) * (1.0 - layer_progress);
+
+            let mat_idx = (layer + rng.gen_range(0..2)) % mountain_colors.len();
+
+            // Main layer block
+            commands.spawn((
+                PbrBundle {
+                    mesh: mountain_mesh.clone(),
+                    material: mountain_colors[mat_idx].clone(),
+                    transform: Transform::from_xyz(base_x + offset_x, layer_y, base_z + offset_z)
+                        .with_rotation(Quat::from_rotation_y(rng.gen_range(0.0..0.3)))
+                        .with_scale(Vec3::new(layer_width, layer_height * 1.1, layer_width * rng.gen_range(0.8..1.2))),
+                    ..default()
+                },
+                Obstacle {
+                    half_extents: Vec3::new(layer_width / 2.0, layer_height / 2.0, layer_width / 2.0),
+                },
+            ));
+
+            // Add rocky outcrops on some layers
+            if layer < num_layers - 2 && rng.gen_bool(0.6) {
+                for _ in 0..rng.gen_range(2..5) {
+                    let outcrop_angle = rng.gen_range(0.0..PI * 2.0);
+                    let outcrop_dist = layer_width * rng.gen_range(0.3..0.5);
+                    let ox = base_x + offset_x + outcrop_angle.cos() * outcrop_dist;
+                    let oz = base_z + offset_z + outcrop_angle.sin() * outcrop_dist;
+                    let outcrop_size = rng.gen_range(8.0..20.0);
+                    let outcrop_height = rng.gen_range(10.0..25.0);
+
+                    commands.spawn((
+                        PbrBundle {
+                            mesh: mountain_mesh.clone(),
+                            material: mountain_colors[rng.gen_range(0..mountain_colors.len())].clone(),
+                            transform: Transform::from_xyz(ox, layer_y + outcrop_height / 2.0, oz)
+                                .with_rotation(Quat::from_euler(
+                                    EulerRot::XYZ,
+                                    rng.gen_range(-0.2..0.2),
+                                    rng.gen_range(0.0..PI),
+                                    rng.gen_range(-0.2..0.2),
+                                ))
+                                .with_scale(Vec3::new(outcrop_size, outcrop_height, outcrop_size * 0.7)),
+                            ..default()
+                        },
+                        Obstacle {
+                            half_extents: Vec3::new(outcrop_size / 2.0, outcrop_height / 2.0, outcrop_size * 0.35),
+                        },
+                    ));
+                }
+            }
+        }
+
+        // Snow cap on top layers
+        let snow_y = island_surface_y + total_height * 0.75;
+        let snow_width = base_width * 0.4;
+        for snow_layer in 0..3 {
+            let sl = snow_layer as f32;
+            let sw = snow_width * (1.0 - sl * 0.25);
+            commands.spawn(PbrBundle {
                 mesh: mountain_mesh.clone(),
-                material: mountain_material.clone(),
-                transform: Transform::from_xyz(x, island_surface_y + height / 2.0, z)
-                    .with_scale(Vec3::new(width, height, width)),
+                material: snow_material.clone(),
+                transform: Transform::from_xyz(
+                    base_x + rng.gen_range(-3.0..3.0),
+                    snow_y + sl * layer_height * 0.8,
+                    base_z + rng.gen_range(-3.0..3.0),
+                )
+                .with_scale(Vec3::new(sw, layer_height * 0.9, sw * rng.gen_range(0.8..1.1))),
                 ..default()
-            },
-            Obstacle {
-                half_extents: Vec3::new(width / 2.0, height / 2.0, width / 2.0),
-            },
-        ));
-        commands.spawn(PbrBundle {
-            mesh: mountain_mesh.clone(),
-            material: snow_material.clone(),
-            transform: Transform::from_xyz(x, island_surface_y + height * 0.85, z)
-                .with_scale(Vec3::new(width * 0.6, height * 0.3, width * 0.6)),
-            ..default()
-        });
+            });
+        }
+
+        // Base boulders around mountain
+        for _ in 0..rng.gen_range(4..8) {
+            let boulder_angle = rng.gen_range(0.0..PI * 2.0);
+            let boulder_dist = base_width * rng.gen_range(0.5..0.8);
+            let bx = base_x + boulder_angle.cos() * boulder_dist;
+            let bz = base_z + boulder_angle.sin() * boulder_dist;
+            let boulder_size = rng.gen_range(6.0..18.0);
+
+            commands.spawn((
+                PbrBundle {
+                    mesh: mountain_mesh.clone(),
+                    material: mountain_colors[rng.gen_range(0..mountain_colors.len())].clone(),
+                    transform: Transform::from_xyz(bx, island_surface_y + boulder_size / 2.0, bz)
+                        .with_rotation(Quat::from_euler(
+                            EulerRot::XYZ,
+                            rng.gen_range(-0.4..0.4),
+                            rng.gen_range(0.0..PI),
+                            rng.gen_range(-0.4..0.4),
+                        ))
+                        .with_scale(Vec3::new(boulder_size, boulder_size * 0.7, boulder_size * 0.9)),
+                    ..default()
+                },
+                Obstacle {
+                    half_extents: Vec3::splat(boulder_size / 2.0),
+                },
+            ));
+        }
     }
 
     // Clouds
@@ -602,17 +722,18 @@ pub fn setup_environment(
         ..default()
     });
 
-    for _ in 0..30 {
-        let x = rng.gen_range(-800.0..800.0);
-        let y = island_surface_y + rng.gen_range(20.0..60.0);
-        let z = rng.gen_range(-800.0..800.0);
-        let size = rng.gen_range(8.0..20.0);
+    // 2 clouds on top of mountains (Northwest area around -550, 550)
+    for i in 0..2 {
+        let x = -550.0 + (i as f32 - 0.5) * 200.0;
+        let y = island_surface_y + 280.0 + i as f32 * 60.0;
+        let z = 550.0 + (i as f32 - 0.5) * 150.0;
+        let size = rng.gen_range(300.0..500.0);
 
-        for _ in 0..5 {
+        for _ in 0..12 {
             let ox = rng.gen_range(-size..size);
-            let oy = rng.gen_range(-2.0..2.0);
+            let oy = rng.gen_range(-40.0..40.0);
             let oz = rng.gen_range(-size * 0.5..size * 0.5);
-            let puff_size = rng.gen_range(4.0..10.0);
+            let puff_size = rng.gen_range(150.0..350.0);
             commands.spawn(PbrBundle {
                 mesh: cloud_mesh.clone(),
                 material: cloud_material.clone(),
@@ -808,12 +929,12 @@ pub fn setup_environment(
         ..default()
     });
 
-    // Lighting
+    // Lighting - optimized with strong ambient for beautiful look
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
-            illuminance: 15000.0,
+            illuminance: 25000.0,
             shadows_enabled: true,
-            color: Color::srgb(1.0, 0.95, 0.8),
+            color: Color::srgb(1.0, 0.98, 0.9), // Warm sunlight
             ..default()
         },
         transform: Transform::from_rotation(Quat::from_euler(
@@ -822,26 +943,46 @@ pub fn setup_environment(
             PI / 4.0,
             0.0,
         )),
-        ..default()
-    });
-
-    commands.insert_resource(AmbientLight {
-        color: Color::srgb(0.6, 0.7, 0.9),
-        brightness: 200.0,
-    });
-
-    // Camera
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 40.0, -50.0)
-            .looking_at(Vec3::new(0.0, 30.0, 20.0), Vec3::Y),
-        projection: PerspectiveProjection {
-            near: 1.0,
-            far: 50000.0,
+        cascade_shadow_config: CascadeShadowConfigBuilder {
+            maximum_distance: 2500.0,
+            first_cascade_far_bound: 150.0,
             ..default()
         }
         .into(),
         ..default()
     });
+
+    // Strong ambient light for beautiful, soft illumination
+    commands.insert_resource(AmbientLight {
+        color: Color::srgb(0.7, 0.8, 1.0), // Soft blue sky bounce
+        brightness: 800.0,
+    });
+
+    // Clear color for beautiful sky
+    commands.insert_resource(ClearColor(Color::srgb(0.5, 0.7, 0.95)));
+
+    // Camera with atmospheric fog
+    commands.spawn((
+        Camera3dBundle {
+            transform: Transform::from_xyz(0.0, 40.0, -50.0)
+                .looking_at(Vec3::new(0.0, 30.0, 20.0), Vec3::Y),
+            projection: PerspectiveProjection {
+                near: 1.0,
+                far: 50000.0,
+                ..default()
+            }
+            .into(),
+            ..default()
+        },
+        FogSettings {
+            color: Color::srgba(0.6, 0.75, 0.95, 1.0),
+            falloff: FogFalloff::Linear {
+                start: 1500.0,
+                end: 4000.0,
+            },
+            ..default()
+        },
+    ));
 
     // UI
     commands
@@ -856,37 +997,69 @@ pub fn setup_environment(
             ..default()
         })
         .with_children(|parent| {
-            parent.spawn((
-                TextBundle::from_section(
-                    "",
-                    TextStyle {
-                        font_size: 24.0,
-                        color: Color::srgb(0.2, 0.8, 1.0),
+            // Top row with left and right sections
+            parent
+                .spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Row,
+                        justify_content: JustifyContent::SpaceBetween,
                         ..default()
                     },
-                )
-                .with_style(Style {
-                    margin: UiRect::top(Val::Px(10.0)),
                     ..default()
-                }),
-                DraftIndicator,
-            ));
+                })
+                .with_children(|row| {
+                    // Left side - game info
+                    row.spawn(NodeBundle {
+                        style: Style {
+                            flex_direction: FlexDirection::Column,
+                            ..default()
+                        },
+                        ..default()
+                    })
+                    .with_children(|left| {
+                        left.spawn((
+                            TextBundle::from_section(
+                                "",
+                                TextStyle {
+                                    font_size: 24.0,
+                                    color: Color::srgb(0.2, 0.8, 1.0),
+                                    ..default()
+                                },
+                            ),
+                            DraftIndicator,
+                        ));
 
-            parent.spawn((
-                TextBundle::from_section(
-                    "Distance: 500m",
-                    TextStyle {
-                        font_size: 20.0,
-                        color: Color::WHITE,
-                        ..default()
-                    },
-                )
-                .with_style(Style {
-                    margin: UiRect::top(Val::Px(10.0)),
-                    ..default()
-                }),
-                DistanceText,
-            ));
+                        left.spawn((
+                            TextBundle::from_section(
+                                "Distance: 500m",
+                                TextStyle {
+                                    font_size: 20.0,
+                                    color: Color::WHITE,
+                                    ..default()
+                                },
+                            )
+                            .with_style(Style {
+                                margin: UiRect::top(Val::Px(10.0)),
+                                ..default()
+                            }),
+                            DistanceText,
+                        ));
+                    });
+
+                    // Right side - server status
+                    row.spawn((
+                        TextBundle::from_section(
+                            "",
+                            TextStyle {
+                                font_size: 14.0,
+                                color: Color::srgba(0.5, 0.5, 0.5, 0.8),
+                                ..default()
+                            },
+                        ),
+                        ServerStatusIndicator,
+                    ));
+                });
         });
 }
 

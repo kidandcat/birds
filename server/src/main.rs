@@ -110,12 +110,19 @@ impl GameState {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = format!("0.0.0.0:{}", SERVER_PORT);
-    let socket = UdpSocket::bind(&addr).await?;
+    // On Fly.io, we must bind to fly-global-services for UDP to work correctly
+    // This ensures replies go out with the correct source address
+    let bind_addr = if std::env::var("FLY_APP_NAME").is_ok() {
+        format!("fly-global-services:{}", SERVER_PORT)
+    } else {
+        format!("0.0.0.0:{}", SERVER_PORT)
+    };
+
+    let socket = UdpSocket::bind(&bind_addr).await?;
     let socket = Arc::new(socket);
     let state = Arc::new(RwLock::new(GameState::new()));
 
-    println!("Flight relay server listening on {}", addr);
+    println!("Flight relay server listening on {}", bind_addr);
 
     // Spawn cleanup task
     let cleanup_socket = socket.clone();

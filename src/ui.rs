@@ -3,7 +3,9 @@ use bevy::prelude::*;
 use crate::bird::{BirdStats, BirdType};
 use crate::components::{
     BirdButton, DistanceText, DraftIndicator, Drafting, Goal, Player, SelectionUI,
+    ServerStatusIndicator,
 };
+use crate::network::NetworkState;
 use crate::state::{AppState, GameState, SelectedBirdType};
 
 /// Helper to create a stat bar
@@ -424,5 +426,31 @@ pub fn check_goal(
         println!("You made it home!");
         game_state.game_over = true;
         game_state.won = true;
+    }
+}
+
+/// Update server status indicator
+pub fn update_server_status(
+    network: Option<Res<NetworkState>>,
+    mut status_query: Query<&mut Text, With<ServerStatusIndicator>>,
+) {
+    let Ok(mut text) = status_query.get_single_mut() else {
+        return;
+    };
+
+    match network {
+        Some(net) => {
+            if net.connected {
+                text.sections[0].value = format!("Online: {}", net.server_addr);
+                text.sections[0].style.color = Color::srgba(0.3, 0.9, 0.4, 0.9);
+            } else {
+                text.sections[0].value = format!("Connecting to {}...", net.server_addr);
+                text.sections[0].style.color = Color::srgba(0.9, 0.8, 0.3, 0.9);
+            }
+        }
+        None => {
+            text.sections[0].value = "Offline".to_string();
+            text.sections[0].style.color = Color::srgba(0.5, 0.5, 0.5, 0.7);
+        }
     }
 }

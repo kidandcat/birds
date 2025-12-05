@@ -53,6 +53,9 @@ pub struct DraftIndicator;
 pub struct DistanceText;
 
 #[derive(Component)]
+pub struct ServerStatusIndicator;
+
+#[derive(Component)]
 pub struct SelectionUI;
 
 #[derive(Component)]
@@ -118,4 +121,12 @@ pub struct FlapState {
 pub struct WindParticle {
     pub lifetime: f32,
     pub velocity: Vec3,
+}
+
+/// Squished state when hitting an obstacle
+#[derive(Component)]
+pub struct Squished {
+    pub timer: f32,           // Time remaining in squish animation
+    pub collision_normal: Vec3, // Direction the bird got squished from
+    pub original_scale: Vec3,  // Original scale to restore/animate from
 }

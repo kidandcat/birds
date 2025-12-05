@@ -62,8 +62,19 @@ pub fn network_send_state(
     mut network: ResMut<NetworkState>,
     player_query: Query<(&Transform, &Bird, &BirdStats), With<Player>>,
     flap_state: Res<FlapState>,
+    mut retry_timer: Local<f32>,
+    time: Res<Time>,
 ) {
+    // If not connected yet, periodically resend join request
     if network.player_id.is_none() {
+        *retry_timer += time.delta_seconds();
+        if *retry_timer > 2.0 {
+            *retry_timer = 0.0;
+            let join_msg = ClientMessage::Join {
+                name: "Player".to_string(),
+            };
+            network.send(&join_msg);
+        }
         return;
     }
 
@@ -123,7 +134,7 @@ pub fn network_receive(
                 let data = &buf[..len];
                 match flight_shared::decode::<ServerMessage>(data) {
                     Ok(ServerMessage::Welcome { player_id }) => {
-                        println!("Connected! Player ID: {}", player_id);
+                        println!("Connected to server! Player ID: {}", player_id);
                         network.player_id = Some(player_id);
                         network.connected = true;
                     }

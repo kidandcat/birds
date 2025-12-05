@@ -4,7 +4,7 @@ use std::f32::consts::PI;
 
 use crate::bird::{BirdStats, BirdType};
 use crate::components::{
-    AiBird, Bird, BodyPart, Drafting, FlapState, Obstacle, Player, WindParticle, Wing,
+    AiBird, Bird, BodyPart, Drafting, FlapState, Obstacle, Player, Squished, WindParticle, Wing,
 };
 use crate::state::{AppState, GameState, SelectedBirdType};
 use rand::Rng;
@@ -375,7 +375,7 @@ pub fn cursor_toggle(
 
 /// Handle player input for pitch/yaw control
 pub fn player_input(
-    mut query: Query<(&mut Bird, &BirdStats), With<Player>>,
+    mut query: Query<(&mut Bird, &BirdStats), (With<Player>, Without<Squished>)>,
     mut motion_events: EventReader<bevy::input::mouse::MouseMotion>,
     time: Res<Time>,
     mut no_input_timer: Local<f32>,
@@ -421,7 +421,7 @@ pub fn player_input(
 
 /// Handle bird movement physics
 pub fn bird_movement(
-    mut query: Query<(&mut Bird, &mut Transform, Option<&BirdStats>), Without<AiBird>>,
+    mut query: Query<(&mut Bird, &mut Transform, Option<&BirdStats>), (Without<AiBird>, Without<Squished>)>,
     camera_query: Query<&Transform, (With<Camera3d>, Without<Bird>)>,
     obstacle_query: Query<(&Transform, &Obstacle), Without<Bird>>,
     flap_state: Res<FlapState>,
@@ -547,7 +547,7 @@ pub fn bird_movement(
             match stats.bird_type {
                 BirdType::Sparrow => {
                     // QUICK DASH: Forward burst, maintains altitude
-                    let dash_acceleration = 60.0;
+                    let dash_acceleration = 120.0;
                     let horizontal_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
                     bird.velocity += horizontal_forward * dash_acceleration * dt;
 
@@ -555,7 +555,7 @@ pub fn bird_movement(
                     bird.velocity.y += 5.0 * dt;
 
                     // Cap horizontal speed
-                    let max_dash_speed = 70.0;
+                    let max_dash_speed = 140.0;
                     let h_speed = Vec3::new(bird.velocity.x, 0.0, bird.velocity.z).length();
                     if h_speed > max_dash_speed {
                         let h_dir = Vec3::new(bird.velocity.x, 0.0, bird.velocity.z).normalize_or_zero();
@@ -565,15 +565,16 @@ pub fn bird_movement(
                 }
                 BirdType::Hawk => {
                     // POWER DIVE: Close wings, dive down, gain massive speed
-                    let max_gravity = 1000.0;
-                    let ramp_time = 4.5;
+                    let max_gravity = 1200.0;  // Strong gravity for fast dive
+                    let ramp_time = 2.0;
                     let gravity_factor = (flap_state.wings_closed_time / ramp_time).min(1.0);
                     bird.velocity.y -= max_gravity * gravity_factor * dt;
 
                     let fall_speed = (-bird.velocity.y).max(0.0);
                     if fall_speed > 1.0 {
+                        // Accelerate forward based on fall speed
                         let horizontal_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
-                        let acceleration = fall_speed * 6.0;
+                        let acceleration = fall_speed * 8.0;
                         bird.velocity += horizontal_forward * acceleration * dt;
 
                         if bird.velocity.length() > stats.max_dive_speed {
@@ -582,41 +583,41 @@ pub fn bird_movement(
                     }
                 }
                 BirdType::Eagle => {
-                    // THERMAL SOAR: Catch updraft, gain altitude without flapping
-                    let thermal_strength = 25.0;
-                    let ramp_time = 2.0;
+                    // THERMAL SOAR: Catch updraft, gain altitude fast
+                    let thermal_strength = 240.0;  // Very strong thermal
+                    let ramp_time = 1.5;
                     let thermal_factor = (flap_state.wings_closed_time / ramp_time).min(1.0);
 
-                    // Rise upward
+                    // Rise upward quickly
                     bird.velocity.y += thermal_strength * thermal_factor * dt;
 
                     // Slight forward momentum loss while soaring
                     let h_speed = Vec3::new(bird.velocity.x, 0.0, bird.velocity.z).length();
                     if h_speed > stats.min_glide_speed {
-                        bird.velocity.x *= 1.0 - 0.3 * dt;
-                        bird.velocity.z *= 1.0 - 0.3 * dt;
+                        bird.velocity.x *= 1.0 - 0.2 * dt;
+                        bird.velocity.z *= 1.0 - 0.2 * dt;
                     }
 
                     // Cap upward speed
-                    bird.velocity.y = bird.velocity.y.min(20.0);
+                    bird.velocity.y = bird.velocity.y.min(160.0);
                 }
                 BirdType::Albatross => {
-                    // DYNAMIC SOARING: Use wind currents to elevate gradually
-                    let wind_lift = 18.0;
-                    let ramp_time = 3.0;
+                    // DYNAMIC SOARING: Catch wind currents for massive forward speed
+                    let ramp_time = 4.0;
                     let soar_factor = (flap_state.wings_closed_time / ramp_time).min(1.0);
 
-                    // Gradual lift from wind
-                    bird.velocity.y += wind_lift * soar_factor * dt;
-
-                    // Also gains some forward speed from wind
+                    // Gradually accelerate forward with wind assistance
                     let horizontal_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
-                    bird.velocity += horizontal_forward * 8.0 * soar_factor * dt;
+                    let wind_acceleration = 320.0 * soar_factor;  // Strong forward acceleration
+                    bird.velocity += horizontal_forward * wind_acceleration * dt;
 
-                    // Cap speeds
-                    bird.velocity.y = bird.velocity.y.min(15.0);
-                    if bird.velocity.length() > stats.max_dive_speed * 0.5 {
-                        bird.velocity = bird.velocity.normalize_or_zero() * stats.max_dive_speed * 0.5;
+                    // Slight lift to maintain altitude
+                    bird.velocity.y += 3.0 * dt;
+
+                    // Cap at 1.5x max dive speed (540)
+                    let max_wind_speed = stats.max_dive_speed * 1.5;
+                    if bird.velocity.length() > max_wind_speed {
+                        bird.velocity = bird.velocity.normalize_or_zero() * max_wind_speed;
                     }
                 }
             }
@@ -668,7 +669,7 @@ pub fn bird_movement(
         if speed > cruise_speed && !flap_state.space_held {
             let base_drag = match stats.bird_type {
                 BirdType::Sparrow => 0.01_f32,
-                BirdType::Hawk => 0.003,
+                BirdType::Hawk => 0.002,  // Lower drag - maintains dive speed longer
                 BirdType::Eagle => 0.001,
                 BirdType::Albatross => 0.0003,
             };
@@ -680,7 +681,12 @@ pub fn bird_movement(
                 bird.velocity = bird.velocity.normalize_or_zero() * cruise_speed;
             }
         } else if flap_state.space_held {
-            let drag = bird.velocity * bird.velocity.length() * 0.005;
+            // Less drag during abilities for Hawk
+            let ability_drag = match stats.bird_type {
+                BirdType::Hawk => 0.001,  // Very low drag during dive
+                _ => 0.005,
+            };
+            let drag = bird.velocity * bird.velocity.length() * ability_drag;
             bird.velocity -= drag * dt;
         }
 
@@ -714,11 +720,12 @@ pub fn bird_movement(
 
 /// Handle obstacle collision
 pub fn obstacle_collision(
-    mut bird_query: Query<(&mut Bird, &mut Transform, &BirdStats), With<Player>>,
+    mut commands: Commands,
+    mut bird_query: Query<(Entity, &mut Bird, &mut Transform, &BirdStats), (With<Player>, Without<Squished>)>,
     obstacle_query: Query<(&Transform, &Obstacle), Without<Player>>,
     time: Res<Time>,
 ) {
-    let Ok((mut bird, mut bird_transform, bird_stats)) = bird_query.get_single_mut() else {
+    let Ok((entity, mut bird, mut bird_transform, bird_stats)) = bird_query.get_single_mut() else {
         return;
     };
     let dt = time.delta_seconds();
@@ -765,13 +772,13 @@ pub fn obstacle_collision(
             let landing_height = 0.5;
             bird_transform.translation.y = obstacle_top + landing_height;
 
-            // Only Sparrow can slide - others always land
+            // All birds slide when moving too fast to land
             let speed = bird.velocity.length();
             let landing_speed_threshold = bird_stats.perfect_glide_speed * 1.5;
-            let should_slide = bird_stats.bird_type == BirdType::Sparrow && speed > landing_speed_threshold;
+            let should_slide = speed > landing_speed_threshold;
 
             if should_slide {
-                // Sparrow too fast - slide along the surface
+                // Too fast to land - slide along the surface
                 bird.velocity.y = 0.0;
 
                 // Apply friction to slow down while sliding
@@ -795,18 +802,22 @@ pub fn obstacle_collision(
             continue;
         }
 
-        let speed = bird.velocity.length();
-        let to_bird = (bird_pos - obs_pos).normalize_or_zero();
+        // Hit obstacle from side - SQUISH!
+        let collision_normal = (bird_pos - obs_pos).normalize_or_zero();
 
-        if speed > 5.0 && bird.damage_timer <= 0.0 {
-            bird.damage_timer = 0.5;
-            let bounce_dir = Vec3::new(to_bird.x, 0.3, to_bird.z).normalize_or_zero();
-            bird.velocity = bounce_dir * speed * 0.5;
-            bird_transform.translation += to_bird * (bird_radius + 0.5);
-        } else {
-            bird_transform.translation += to_bird * 0.5;
-            bird.velocity *= 0.5;
-        }
+        // Stop the bird and add squish component
+        bird.velocity = Vec3::ZERO;
+
+        // Push bird slightly away from obstacle to show collision point
+        bird_transform.translation = Vec3::new(closest_x, closest_y, closest_z) + collision_normal * 0.5;
+
+        commands.entity(entity).insert(Squished {
+            timer: 0.6,  // Fast squish animation before restart
+            collision_normal,
+            original_scale: bird_transform.scale,
+        });
+
+        return;
     }
 }
 
@@ -814,7 +825,7 @@ pub fn obstacle_collision(
 pub fn wing_flap(
     mut wing_query: Query<(&Wing, &mut Transform)>,
     mut head_query: Query<(&BodyPart, &mut Transform), Without<Wing>>,
-    mut player_query: Query<(&mut Bird, &BirdStats, &Children), With<Player>>,
+    mut player_query: Query<(&mut Bird, &BirdStats, &Children), (With<Player>, Without<Squished>)>,
     mut flap_state: ResMut<FlapState>,
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
@@ -876,9 +887,10 @@ pub fn wing_flap(
                 let local_forward = bird_rotation * Vec3::Z;
 
                 let thrust = bird_stats.flap_thrust;
-                // Sparrow gets double forward speed per flap
+                // Forward speed multiplier per flap
                 let forward_mult = match bird_stats.bird_type {
                     BirdType::Sparrow => 0.6,
+                    BirdType::Eagle => 1.0,   // Powerful forward thrust
                     _ => 0.3,
                 };
                 bird.velocity += local_up * thrust + local_forward * (thrust * forward_mult);
@@ -1003,18 +1015,63 @@ pub fn wing_flap(
 
 /// Camera follow system
 pub fn camera_follow(
-    player_query: Query<(&Bird, &Transform, &BirdStats), With<Player>>,
+    player_query: Query<(&Bird, &Transform, &BirdStats, Option<&Squished>), With<Player>>,
     mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<Player>)>,
     time: Res<Time>,
     mut frame_count: Local<u32>,
 ) {
-    let Ok((bird, player_transform, stats)) = player_query.get_single() else {
+    let Ok((bird, player_transform, stats, squished)) = player_query.get_single() else {
         return;
     };
     let Ok(mut camera_transform) = camera_query.get_single_mut() else {
         return;
     };
     let dt = time.delta_seconds();
+
+    // Check if bird is squished - rotate camera to side view
+    if let Some(squished) = squished {
+        let total_time = 0.6;
+        let progress = 1.0 - (squished.timer / total_time).clamp(0.0, 1.0);
+
+        // Start from regular camera distance, end closer
+        let start_distance = match stats.bird_type {
+            BirdType::Sparrow => 25.0,
+            BirdType::Hawk => 45.0,
+            BirdType::Eagle => 50.0,
+            BirdType::Albatross => 55.0,
+        };
+        let end_distance = 15.0;
+        let camera_distance = start_distance + (end_distance - start_distance) * progress;
+
+        let bird_pos = player_transform.translation;
+
+        // Rotate camera from behind (0) to side view (PI/2)
+        let angle_offset = progress * (PI / 2.0);
+        let cam_angle = bird.yaw + PI + angle_offset;
+
+        // Start at regular height, move slightly above
+        let start_height = match stats.bird_type {
+            BirdType::Sparrow => 0.0,
+            _ => 1.0,
+        };
+        let height_offset = start_height + progress * 5.0;
+
+        let target_pos = Vec3::new(
+            bird_pos.x + cam_angle.sin() * camera_distance,
+            bird_pos.y + height_offset,
+            bird_pos.z + cam_angle.cos() * camera_distance,
+        );
+
+        // Look at the bird
+        let look_dir = (bird_pos - target_pos).normalize();
+        let target_rotation = Quat::from_rotation_arc(Vec3::NEG_Z, look_dir);
+
+        // Smooth but responsive camera movement
+        let smooth_factor = (8.0 * dt).min(1.0);
+        camera_transform.translation = camera_transform.translation.lerp(target_pos, smooth_factor);
+        camera_transform.rotation = camera_transform.rotation.slerp(target_rotation, smooth_factor);
+        return;
+    }
 
     let flight_rotation = if bird.grounded {
         Quat::from_rotation_y(bird.yaw) * Quat::from_rotation_x(bird.pitch)
@@ -1233,4 +1290,44 @@ pub fn cleanup_player(
     flap_state.cooldown = 0.0;
     flap_state.space_held = false;
     flap_state.wings_closed_time = 0.0;
+}
+
+/// Handle squish animation and restart
+pub fn squish_animation(
+    mut query: Query<(&mut Transform, &mut Squished), With<Player>>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut windows: Query<&mut Window>,
+    time: Res<Time>,
+) {
+    let Ok((mut transform, mut squished)) = query.get_single_mut() else {
+        return;
+    };
+
+    let dt = time.delta_seconds();
+    squished.timer -= dt;
+
+    let total_time = 0.6; // Fast squish animation
+    let squish_progress = 1.0 - (squished.timer / total_time).max(0.0);
+
+    // Quick squish - flatten forward (Z axis in local bird space), expand sideways
+    let squish_amount = (squish_progress * 5.0).min(1.0); // Very quick squish
+
+    let mut scale = squished.original_scale;
+
+    // Always squish in Z (forward direction bird flies), expand X and Y
+    scale.z *= 1.0 - squish_amount * 0.85;  // Flatten to 15% of original depth
+    scale.x *= 1.0 + squish_amount * 0.5;   // Expand width
+    scale.y *= 1.0 + squish_amount * 0.3;   // Expand height slightly
+
+    transform.scale = scale;
+
+    // After timer runs out, go back to bird selection
+    if squished.timer <= 0.0 {
+        // Release cursor before going back to selection
+        if let Ok(mut window) = windows.get_single_mut() {
+            window.cursor.grab_mode = CursorGrabMode::None;
+            window.cursor.visible = true;
+        }
+        next_state.set(AppState::BirdSelection);
+    }
 }

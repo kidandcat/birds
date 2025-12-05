@@ -17,7 +17,7 @@ use state::{AppState, GameState, SelectedBirdType};
 fn main() {
     let server_addr = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:7777".to_string());
+        .unwrap_or_else(|| "77.83.141.5:7777".to_string());
 
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
@@ -69,6 +69,7 @@ fn main() {
             player::player_input,
             player::bird_movement,
             player::obstacle_collision,
+            player::squish_animation,
             ai::ai_bird_movement,
             player::camera_follow,
             player::drafting_system,
@@ -77,6 +78,7 @@ fn main() {
             player::wind_particle_spawner,
             player::wind_particle_update,
             ui::update_ui,
+            ui::update_server_status,
             ui::check_goal,
             world::chunk_management,
             player::reset_to_selection,
