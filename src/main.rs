@@ -1,4 +1,5 @@
 mod ai;
+mod audio;
 mod bird;
 mod components;
 mod network;
@@ -28,7 +29,12 @@ fn main() {
         .init_resource::<PlayerScore>()
         .init_state::<AppState>()
         .insert_state(AppState::BirdSelection)
-        .insert_resource(SelectedBirdType(BirdType::Hawk));
+        .insert_resource(SelectedBirdType(BirdType::Hawk))
+        .add_event::<audio::PlaySound>();
+
+    // Audio systems
+    app.add_systems(Startup, audio::load_audio)
+        .add_systems(Update, audio::play_sound_effects);
 
     // Initialize networking
     if let Some(net) = NetworkState::new(&server_addr) {
@@ -66,6 +72,7 @@ fn main() {
             player::grab_cursor,
             ai::spawn_ai_sparrows,
             ui::setup_score_ui,
+            audio::start_background_music,
         ),
     )
     .add_systems(
@@ -82,6 +89,7 @@ fn main() {
             player::wind_particle_spawner,
             player::wind_particle_update,
             player::reset_to_selection,
+            audio::wind_soar_sound,
         )
             .run_if(in_state(AppState::Playing)),
     )
@@ -115,7 +123,12 @@ fn main() {
     )
     .add_systems(
         OnExit(AppState::Playing),
-        (player::cleanup_player, ui::cleanup_score_ui),
+        (
+            player::cleanup_player,
+            ui::cleanup_score_ui,
+            audio::stop_background_music,
+            audio::cleanup_wind_soar,
+        ),
     )
     .run();
 }

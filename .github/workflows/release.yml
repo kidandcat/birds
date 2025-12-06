@@ -26,9 +26,10 @@ jobs:
         run: cargo build --release --target aarch64-apple-darwin
       - name: Package
         run: |
-          mkdir -p dist
-          cp target/aarch64-apple-darwin/release/flight dist/flight-macos-arm64
-          chmod +x dist/flight-macos-arm64
+          mkdir -p dist/flight-macos-arm64
+          cp target/aarch64-apple-darwin/release/flight dist/flight-macos-arm64/flight
+          cp -r assets dist/flight-macos-arm64/
+          chmod +x dist/flight-macos-arm64/flight
       - uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
@@ -44,12 +45,13 @@ jobs:
         run: cargo build --release
       - name: Package
         run: |
-          mkdir dist
-          copy target\release\flight.exe dist\flight-windows.exe
+          mkdir dist\flight-windows
+          copy target\release\flight.exe dist\flight-windows\flight.exe
+          xcopy assets dist\flight-windows\assets /E /I
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: dist/flight-windows.exe
+          path: dist/flight-windows
 
   build-linux:
     runs-on: ubuntu-latest
@@ -65,9 +67,10 @@ jobs:
         run: cargo build --release
       - name: Package
         run: |
-          mkdir -p dist
-          cp target/release/flight dist/flight-linux
-          chmod +x dist/flight-linux
+          mkdir -p dist/flight-linux
+          cp target/release/flight dist/flight-linux/flight
+          cp -r assets dist/flight-linux/
+          chmod +x dist/flight-linux/flight
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -84,13 +87,9 @@ jobs:
       - name: Create Release
         run: |
           mkdir -p release
-          cp artifacts/macos-arm64/flight-macos-arm64 release/
-          cp artifacts/windows/flight-windows.exe release/
-          cp artifacts/linux/flight-linux release/
-          cd release
-          zip flight-macos-arm64.zip flight-macos-arm64
-          zip flight-windows.zip flight-windows.exe
-          zip flight-linux.zip flight-linux
+          cd artifacts/macos-arm64 && zip -r ../../release/flight-macos-arm64.zip . && cd ../..
+          cd artifacts/windows && zip -r ../../release/flight-windows.zip . && cd ../..
+          cd artifacts/linux && zip -r ../../release/flight-linux.zip . && cd ..
       - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:

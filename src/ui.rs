@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::audio::{PlaySound, SoundEffect};
 use crate::bird::{BirdStats, BirdType};
 use crate::components::{
     BirdButton, DistanceText, DraftIndicator, Drafting, Goal, Player, PlayerScore, ScoreText,
@@ -340,15 +341,24 @@ pub fn selection_button_system(
         Changed<Interaction>,
     >,
     mut next_state: ResMut<NextState<AppState>>,
+    mut sound_events: EventWriter<PlaySound>,
 ) {
     for (interaction, bird_button, mut bg_color) in interaction_query.iter_mut() {
         let base_color = bird_button.0.color();
         match *interaction {
             Interaction::Pressed => {
+                // Play button click sound
+                sound_events.send(PlaySound {
+                    sound: SoundEffect::ButtonClick,
+                });
                 commands.insert_resource(SelectedBirdType(bird_button.0));
                 next_state.set(AppState::Playing);
             }
             Interaction::Hovered => {
+                // Play button hover sound
+                sound_events.send(PlaySound {
+                    sound: SoundEffect::ButtonHover,
+                });
                 let rgba = base_color.to_srgba();
                 *bg_color = Color::srgb(
                     (rgba.red * 1.3).min(1.0),

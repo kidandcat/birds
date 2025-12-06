@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::window::CursorGrabMode;
 use std::f32::consts::PI;
 
+use crate::audio::{PlaySound, SoundEffect};
 use crate::bird::{BirdStats, BirdType};
 use crate::components::{
     AiBird, Bird, BodyPart, Drafting, FlapState, HuntingStrike, Obstacle, Player, Prey, Squished, WindParticle, Wing,
@@ -738,6 +739,7 @@ pub fn obstacle_collision(
     mut bird_query: Query<(Entity, &mut Bird, &mut Transform, &BirdStats), (With<Player>, Without<Squished>, Without<HuntingStrike>)>,
     obstacle_query: Query<(&Transform, &Obstacle), Without<Player>>,
     time: Res<Time>,
+    mut sound_events: EventWriter<PlaySound>,
 ) {
     let Ok((entity, mut bird, mut bird_transform, bird_stats)) = bird_query.get_single_mut() else {
         return;
@@ -808,6 +810,11 @@ pub fn obstacle_collision(
                 bird.grounded = true;
                 bird.pitch = 0.0;
                 bird.roll = 0.0;
+
+                // Play landing sound
+                sound_events.send(PlaySound {
+                    sound: SoundEffect::Landing,
+                });
             }
             return;
         }
@@ -824,6 +831,11 @@ pub fn obstacle_collision(
 
         // Push bird slightly away from obstacle to show collision point
         bird_transform.translation = Vec3::new(closest_x, closest_y, closest_z) + collision_normal * 0.5;
+
+        // Play collision sound
+        sound_events.send(PlaySound {
+            sound: SoundEffect::Collision,
+        });
 
         commands.entity(entity).insert(Squished {
             timer: 0.6,  // Fast squish animation before restart
@@ -843,6 +855,7 @@ pub fn wing_flap(
     mut flap_state: ResMut<FlapState>,
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
+    mut sound_events: EventWriter<PlaySound>,
 ) {
     let flap_duration = 0.3;
     let wing_closed_angle = 1.5;
@@ -887,11 +900,21 @@ pub fn wing_flap(
             flap_state.timer = flap_duration;
             flap_state.cooldown = bird_stats.flap_cooldown;
 
+            // Play wing flap sound
+            sound_events.send(PlaySound {
+                sound: SoundEffect::WingFlap(bird_stats.bird_type),
+            });
+
             if bird.grounded {
                 bird.grounded = false;
                 bird.velocity = Vec3::new(0.0, 15.0, bird_stats.perfect_glide_speed);
                 let yaw_rotation = Quat::from_rotation_y(bird.yaw);
                 bird.velocity = yaw_rotation * bird.velocity;
+
+                // Play takeoff sound
+                sound_events.send(PlaySound {
+                    sound: SoundEffect::Takeoff,
+                });
             } else {
                 let bird_rotation = Quat::from_rotation_y(bird.yaw)
                     * Quat::from_rotation_x(bird.pitch)

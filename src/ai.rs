@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use rand::Rng;
 use std::f32::consts::PI;
 
+use crate::audio::{PlaySound, SoundEffect};
 use crate::bird::{BirdStats, BirdType};
 use crate::components::{AiBird, AiSparrow, Bird, BodyPart, Captured, HuntingStrike, Obstacle, Player, PlayerScore, Prey, Wing};
 
@@ -586,6 +587,7 @@ pub fn hunting_system(
     mut score: ResMut<PlayerScore>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut sound_events: EventWriter<PlaySound>,
 ) {
     let Ok((hunter_entity, hunter_transform, hunter_stats)) = hunter_query.get_single() else {
         return;
@@ -617,6 +619,16 @@ pub fn hunting_system(
                 original_scale: hunter_transform.scale,
                 original_pos: hunter_pos,
                 prey_pos,
+            });
+
+            // Play hunting strike sound
+            sound_events.send(PlaySound {
+                sound: SoundEffect::HuntingStrike,
+            });
+
+            // Play capture success sound
+            sound_events.send(PlaySound {
+                sound: SoundEffect::CaptureSuccess,
             });
 
             // Award points
@@ -1003,6 +1015,7 @@ pub fn sparrow_passive_scoring(
     player_query: Query<(&BirdStats, &Bird), With<Player>>,
     mut score: ResMut<PlayerScore>,
     time: Res<Time>,
+    mut sound_events: EventWriter<PlaySound>,
 ) {
     let Ok((stats, bird)) = player_query.get_single() else {
         return;
@@ -1023,5 +1036,10 @@ pub fn sparrow_passive_scoring(
     if score.passive_timer >= 50.0 {
         score.passive_timer -= 50.0;
         score.points += 1;
+
+        // Play score point sound
+        sound_events.send(PlaySound {
+            sound: SoundEffect::ScorePoint,
+        });
     }
 }
